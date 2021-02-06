@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Compiled Files
+dst/*.js*
+dst/*.css*
+
+# modules
+node_modules
