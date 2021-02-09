@@ -2,9 +2,14 @@ const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_flo
 
 
 // Texture Resolutions
-const COLOR_RESOLUTION = 1024;
+const COLOR_RESOLUTION = 512;
 const SIM_RESOLUTION = 128;
-const DELTA_T = 0.1;
+
+// 0.25 is a good active time for the simulation.
+// The velocity field doesn't blow up too quickly at this timestep.
+// also with better boundary conditions this might not be an issue.
+// NOTE: Check GPU Gems.
+const DELTA_T = 0.25;
 
 const VELOCITY_DISSIPATION = 0.2;
 const VORTICITY = 1.0;
@@ -143,7 +148,7 @@ const create_color_buffer = regl({
 	count: 6
 });
 
-const draw_arrows = regl({
+const draw_velocity_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: `
 		precision highp float;
@@ -176,7 +181,7 @@ const draw_arrows = regl({
 			component = scale * rotation * component;
 			component = component + aUV;
 
-			gl_Position = vec4(component, 1, 1.0);
+			gl_Position = vec4(component, 0.0, 1.0);
 		}
 	`,
 	frag: `
@@ -184,7 +189,7 @@ const draw_arrows = regl({
 
 		void main ()
 		{
-			gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+			gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 		}
 	`,
 	attributes: {
@@ -196,6 +201,22 @@ const draw_arrows = regl({
 	},
 	count: arrows.positions.length,
 });
+
+const draw_pressure_field = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: require('./fluid-shaders/pressure/rgb-levelsets.fs'),
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uPressure: regl.prop('pressure'),
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+	},
+	count: 6
+
+})
 
 const clear_buffer = regl({
 	framebuffer: regl.prop('target'),
@@ -228,16 +249,6 @@ const create_velocity_buffer = regl({
 		precision highp float;
 
 		varying vec2 vUv;
-
-		float x(vec2 v)
-		{
-			return sin(6.28318 * v.x);
-		}
-
-		float y(vec2 v)
-		{
-			return sin(6.28318 * v.y);
-		}
 
 		void main ()
 		{
@@ -573,14 +584,23 @@ const draw_buffer = regl({
 })
 
 let tmp;
+let keys = {};
 
 create_color_buffer();
 create_velocity_buffer();
 
 regl.frame(() => {
-	draw_buffer({source: color_0, target: tmp_color});
-	draw_arrows({velocity: velocity_0, target: tmp_color});
-	draw_buffer({source: tmp_color, target: null});
+	// clear_buffer({target: tmp_color, clearcolor: [1.0, 1.0, 1.0, 1.0]})
+
+	// if ( !keys['s'] ) draw_buffer({source: color_0, target: tmp_color});
+	//
+	// // Show the velocity field arrows for debugging.
+	// if ( keys['a'] ) { draw_velocity_field({velocity: velocity_0, target: tmp_color}); }
+	// if ( keys['s'] ) { draw_pressure_field({pressure: pressure_0, target: tmp_color}); }
+
+	draw_pressure_field({pressure: pressure_0, target: null});
+
+	// draw_buffer({source: tmp_color, target: null});
 
 	advect_buffer({
 		target: velocity_1,
@@ -630,3 +650,13 @@ regl.frame(() => {
 	// velocity_0 = velocity_1;
 	// velocity_1 = tmp;
 });
+
+
+
+window.addEventListener('keydown', event => {
+	keys[event.key] = true;
+})
+
+window.addEventListener('keyup', event => {
+	keys[event.key] = false;
+})
