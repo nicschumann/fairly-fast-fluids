@@ -4,6 +4,7 @@
 # Compiled Files
 dst/*.js*
 dst/*.css*
+dst/data
 
 # modules
 node_modules

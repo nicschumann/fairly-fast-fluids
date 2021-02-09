@@ -4,7 +4,7 @@ const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_flo
 // Texture Resolutions
 const COLOR_RESOLUTION = 1024;
 const SIM_RESOLUTION = 128;
-const DELTA_T = 0.25;
+const DELTA_T = 0.1;
 
 const VELOCITY_DISSIPATION = 0.2;
 const VORTICITY = 1.0;
@@ -12,7 +12,66 @@ const CURL = 30;
 
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
-const PRESSURE_JACOBI_ITERATIONS = 10;
+const PRESSURE_JACOBI_ITERATIONS = 2;
+
+const GRID_DIVISIONS = 30;
+
+function create_arrow_geometry ()
+{
+	let positions = [];
+	let elements = [];
+	let uvs = [];
+
+	let offsets = [[0, -0.005], [0.03, 0], [0, 0.005]]
+
+	let division = 1 / GRID_DIVISIONS;
+	for (var u = 0; u < GRID_DIVISIONS; u++)
+	{
+		for (var v = 0; v < GRID_DIVISIONS; v++)
+		{
+			let i = (u * GRID_DIVISIONS + v) * 3;
+			let u_screen = 2.0 * division * u - 1.0 + division / 2.0;
+			let v_screen = 2.0 * division * v - 1.0 + division / 2.0;
+
+			uvs.push([u_screen, v_screen]);
+			uvs.push([u_screen, v_screen]);
+			uvs.push([u_screen, v_screen]);
+
+			positions.push([u_screen + offsets[0][0], v_screen + offsets[0][1]])
+			positions.push([u_screen + offsets[1][0], v_screen + offsets[1][1]])
+			positions.push([u_screen + offsets[2][0], v_screen + offsets[2][1]])
+
+			elements.push(i);
+			elements.push(i + 1);
+			elements.push(i + 2);
+		}
+	}
+
+	return {
+		positions,
+		elements,
+		uvs
+	}
+}
+
+function create_buffer_from_image ()
+{
+	let im = document.getElementById('image');
+	let color = regl.texture({
+		data: im,
+		mag: 'linear',
+		min: 'linear',
+		wrapS: 'repeat',
+		wrapT: 'repeat',
+		type: 'float'
+	});
+
+	return regl.framebuffer({
+		color,
+		depth: false,
+		stencil: false
+	});
+}
 
 function create_buffer(resolution)
 {
@@ -33,7 +92,11 @@ function create_buffer(resolution)
 	});
 }
 
+let arrows = create_arrow_geometry();
+
+let tmp_color = create_buffer(COLOR_RESOLUTION);
 let color_0 = create_buffer(COLOR_RESOLUTION);
+// let color_0 = create_buffer_from_image();
 let color_1 = create_buffer(COLOR_RESOLUTION);
 
 let velocity_0 = create_buffer(SIM_RESOLUTION);
@@ -46,34 +109,9 @@ let divergence_0 = create_buffer(SIM_RESOLUTION);
 let curl_0 = create_buffer(SIM_RESOLUTION);
 
 
-const STANDARD_VERTEX_SOURCE = `
-	precision highp float;
-
-	attribute vec2 aPosition;
-
-	varying vec2 vUv;
-	varying vec2 vL;
-	varying vec2 vR;
-	varying vec2 vT;
-	varying vec2 vB;
-
-	uniform vec2 uTexelSize;
-
-	void main ()
-	{
-		vUv = aPosition * 0.5 + 0.5;
-		vL = vUv - vec2(uTexelSize.x, 0.0);
-		vR = vUv + vec2(uTexelSize.x, 0.0);
-		vT = vUv + vec2(0.0, uTexelSize.y);
-		vB = vUv - vec2(0.0, uTexelSize.y);
-
-		gl_Position = vec4(aPosition, 0.0, 1.0);
-	}
-`;
-
 const create_color_buffer = regl({
 	framebuffer: () => color_0,
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision highp float;
 		precision highp sampler2D;
@@ -105,9 +143,87 @@ const create_color_buffer = regl({
 	count: 6
 });
 
+const draw_arrows = regl({
+	framebuffer: regl.prop('target'),
+	vert: `
+		precision highp float;
+
+		attribute vec2 aPosition;
+		attribute vec2 aUV;
+
+		uniform sampler2D uVelocity;
+
+		mat2 rot(float angle)
+		{
+			float c = cos(angle);
+			float s = sin(angle);
+
+			return mat2(
+				vec2(c, -s),
+				vec2(s,  c)
+			);
+		}
+
+		void main ()
+		{
+			vec2 sample = aUV * 0.5 + 0.5;
+			vec2 v = texture2D(uVelocity, sample).xy;
+			float angle = -atan(v.y, v.x);
+			mat2 rotation = rot(angle);
+			float scale = length(v);
+
+			vec2 component = aPosition - aUV;
+			component = scale * rotation * component;
+			component = component + aUV;
+
+			gl_Position = vec4(component, 1, 1.0);
+		}
+	`,
+	frag: `
+		precision highp float;
+
+		void main ()
+		{
+			gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+		}
+	`,
+	attributes: {
+		aPosition: arrows.positions,
+		aUV: arrows.uvs
+	},
+	uniforms: {
+		uVelocity: regl.prop('velocity')
+	},
+	count: arrows.positions.length,
+});
+
+const clear_buffer = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: `
+		precision mediump float;
+
+		uniform vec4 uClearColor;
+
+		void main ()
+		{
+			gl_FragColor = uClearColor;
+		}
+	`,
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		uClearColor: regl.prop('clearcolor')
+	},
+	count: 6
+})
+
 const create_velocity_buffer = regl({
 	framebuffer: () => velocity_0,
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision highp float;
 
@@ -128,8 +244,8 @@ const create_velocity_buffer = regl({
 			float u = vUv.x * 2.0 - 1.0;
 			float v = vUv.y * 2.0 - 1.0;
 
-			// float x = sin(2.0 * 3.1415 * v);
-			float x = 1.0;
+			float x = sin(2.0 * 3.1415 * v);
+			// float x = 1.0;
 			float y = sin(2.0 * 3.1415 * u);
 
 			gl_FragColor = vec4(
@@ -153,7 +269,7 @@ const create_velocity_buffer = regl({
 
 const advect_buffer = regl({
 	framebuffer: regl.prop('target'),
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision highp float;
 		precision highp	sampler2D;
@@ -205,7 +321,7 @@ const advect_buffer = regl({
 
 const calculate_curl = regl({
 	framebuffer: () => curl_0,
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision mediump float;
 		precision mediump sampler2D;
@@ -241,7 +357,7 @@ const calculate_curl = regl({
 
 const calculate_vorticity = regl({
 	framebuffer: regl.prop('target'),
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision highp float;
 		precision highp sampler2D;
@@ -294,7 +410,7 @@ const calculate_vorticity = regl({
 
 const calculate_divergence = regl({
 	framebuffer: () => divergence_0,
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision mediump float;
 		precision mediump sampler2D;
@@ -306,6 +422,9 @@ const calculate_divergence = regl({
 		varying highp vec2 vB;
 
 		uniform sampler2D uVelocity;
+		uniform highp vec2 uTexelSize;
+		uniform float rho;
+		uniform float dt_inv;
 
 		void main ()
 		{
@@ -332,13 +451,15 @@ const calculate_divergence = regl({
 	uniforms: {
 		uVelocity: regl.prop('velocity'),
 		uTexelSize: regl.prop('velocityTexSize'),
+		rho: 0.001,
+		dt_inv: 1.0 / DELTA_T
 	},
 	count: 6
 });
 
 const calculate_pressure = regl({
 	framebuffer: regl.prop('target'),
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision mediump float;
 		precision mediump sampler2D;
@@ -379,7 +500,7 @@ const calculate_pressure = regl({
 
 const calculate_velocity_gradient_for_pressure = regl({
 	framebuffer: regl.prop('target'),
-	vert: STANDARD_VERTEX_SOURCE,
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision mediump float;
 		precision mediump sampler2D;
@@ -418,7 +539,8 @@ const calculate_velocity_gradient_for_pressure = regl({
 });
 
 const draw_buffer = regl({
-	vert: STANDARD_VERTEX_SOURCE,
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
 	frag: `
 		precision highp float;
 		precision highp	sampler2D;
@@ -444,7 +566,7 @@ const draw_buffer = regl({
 	},
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
-		uSource: () => color_0,
+		uSource: regl.prop('source'),
 		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE]
 	},
 	count: 6
@@ -455,40 +577,10 @@ let tmp;
 create_color_buffer();
 create_velocity_buffer();
 
-
 regl.frame(() => {
-	draw_buffer();
-
-	// calculate_curl({
-	// 	velocity: velocity_0,
-	// 	curlTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-	// })
-	//
-	// calculate_vorticity({
-	// 	target: velocity_1,
-	// 	velocity: velocity_0,
-	// 	curl: curl_0,
-	// 	velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-	// })
-
-	calculate_divergence({
-		velocity: velocity_0,
-		velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-	});
-
-	for (var i = 0; i < PRESSURE_JACOBI_ITERATIONS; i++)
-	{
-		calculate_pressure({
-			target: pressure_1,
-			pressure: pressure_0,
-			divergence: divergence_0,
-			pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
-		});
-
-		tmp = pressure_0;
-		pressure_0 = pressure_1;
-		pressure_1 = tmp;
-	}
+	draw_buffer({source: color_0, target: tmp_color});
+	draw_arrows({velocity: velocity_0, target: tmp_color});
+	draw_buffer({source: tmp_color, target: null});
 
 	advect_buffer({
 		target: velocity_1,
@@ -498,6 +590,17 @@ regl.frame(() => {
 		velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
 	});
 
+	calculate_divergence({
+		velocity: velocity_1,
+		velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+	});
+
+	calculate_pressure({
+		target: pressure_1,
+		pressure: pressure_0,
+		divergence: divergence_0,
+		pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
+	});
 
 	calculate_velocity_gradient_for_pressure({
 		target: velocity_0,

@@ -1,15 +1,22 @@
 precision highp float;
 
-attribute vec2 position;
-varying vec2 v_pos;
+attribute vec2 aPosition;
 
-vec2 getUVFromPosition(vec2 coord)
-{
-  return coord * 0.5 + 0.5;
-}
+varying vec2 vUv;
+varying vec2 vL;
+varying vec2 vR;
+varying vec2 vT;
+varying vec2 vB;
+
+uniform vec2 uTexelSize;
 
 void main ()
 {
-  v_pos = getUVFromPosition(position);
-  gl_Position = vec4(position, 0.0, 1.0);
+  vUv = aPosition * 0.5 + 0.5;
+  vL = vUv - vec2(uTexelSize.x, 0.0);
+  vR = vUv + vec2(uTexelSize.x, 0.0);
+  vT = vUv + vec2(0.0, uTexelSize.y);
+  vB = vUv - vec2(0.0, uTexelSize.y);
+
+  gl_Position = vec4(aPosition, 0.0, 1.0);
 }
