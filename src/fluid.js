@@ -205,7 +205,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/rgb-levelsets.fs'),
+	frag: require('./fluid-shaders/pressure/hsv-linear.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
