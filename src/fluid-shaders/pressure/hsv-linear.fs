@@ -22,6 +22,6 @@ vec3 hsv2rgb(vec3 c)
 void main ()
 {
   float p = texture2D(uPressure, vUv).x;
-  vec3 p_hsv = vec3(p, 1.0, p);
+  vec3 p_hsv = vec3(p, 1.0, abs(p));
   gl_FragColor = vec4(hsv2rgb(p_hsv), 1.0);
 }
