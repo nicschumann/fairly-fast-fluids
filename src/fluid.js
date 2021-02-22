@@ -661,8 +661,8 @@ regl.frame(() => {
 	// if ( !keys['s'] ) draw_buffer({source: color_0, target: tmp_color});
 	//
 	// // Show the velocity field arrows for debugging.
-	// draw_pressure_field({pressure: pressure_0, target: null});
-	draw_buffer({source: color_buffer.front, target: null});
+	draw_pressure_field({pressure: pressure_buffer.front, target: null});
+	// draw_buffer({source: color_buffer.front, target: null});
 	// if ( keys['a'] ) { draw_velocity_field({velocity: velocity_0, target: tmp_color}); }
 
 	// draw_velocity_field({velocity: velocity_0, target: null});
@@ -670,6 +670,7 @@ regl.frame(() => {
 
 	// draw_buffer({source: tmp_color, target: null});
 
+	// external forces
 	forces.forEach(force => {
 		add_directed_force({
 			target: velocity_buffer.back,
@@ -694,7 +695,7 @@ regl.frame(() => {
 			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
 		});
 
-		// external forces
+
 
 		calculate_divergence({
 			target: divergence_buffer,

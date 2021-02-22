@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "node watch.js"
+    "watch": "node watch.js",
+    "serve": "python3 -m http.server --directory dst"
   },
   "author": "",
   "license": "ISC",
