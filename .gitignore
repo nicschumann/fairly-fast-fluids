@@ -8,3 +8,9 @@ dst/data
 
 # modules
 node_modules
+
+# archives and left over code (local only, please)
+archive
+
+# Ignore generated forces from GlyphsApp for now
+forces.json
