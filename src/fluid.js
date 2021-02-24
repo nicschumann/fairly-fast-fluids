@@ -1,31 +1,89 @@
 const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_float_linear']});
 
-
+/**
+ * Hello, and welcome to this simulator that draws Psychedelic Letters
+ * Using color, velocity, and pressure fields.
+ *
+ * This is the web component of a system that integrates with GlyphsApp.
+ * Initial vector fields are generated directly from GlyphsApp as JSON descriptions.
+ *
+ * These JSON descriptions then act as initial conditions for a fluid simulation.
+ *
+ * The sim has many modes, which can be set by specifying different initial vector fields.
+ *
+ * Velocity Mode:
+ * In Velocity mode, the sim pushes ink around a 2D surface according to these glyph vector fields,
+ * creating a dynamic painting. For good effects with velocity mode, start with a vector field
+ * composed of tangent vectors to the glyphs
+ *
+ */
+// "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 512;
+const COLOR_RESOLUTION = 1024;
 const SIM_RESOLUTION = 128;
+const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
+const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
+
+// Constants used to set the render state.
+const RENDER_COLOR = 'color';
+const RENDER_PRESSURE = 'pressure';
+const RENDER_VELOCITY = 'velocity';
+
+
+// Runtime parameters:
+// Tweaking these changes the behavior of the simulation over its lifespan.
+
+const parameters = {
+	// dt: this is the length of the timestep for the simulation.
+	// This is NOT the framerate of the simulation (which tries to stick to 60)
+	// a range from 4 - 0.01 creates an
+	// interesting range of effects here.
+	dt: 0.25,
+
+	// dissipation: this controls the built in decay of the velocity
+	// and pressure fields at each timestep. Setting these to 0 effectively
+	// prevents the velocities and pressures from decreasing over time, which
+	// can lead to some interesting behavior.
+	dissipation: {
+		// set these to below 0.1 to enable total freakout mode.
+		velocity: 0.25,
+		// set these to below 0.1 to enable total freakout mode.
+		pressure: 0.25
+
+	},
+
+	// This controls the radius of the "paintbrushes" used to
+	// place adjustments to the velocity and color fields in the
+	//
+	radius: {
+		// radius of impact for the initial velocity field.
+		velocity: 0.001,
+		// radius of impact for the initial color field, and for real time color shaping.
+		color: 0.001
+	},
+
+	iterations: {
+		// set this to 0 for freakout mode!
+		pressure: 20
+	},
+
+	// not sure that this should be a runtime parameter, since it requires changeing the
+	// UV data of the velocity vertex shader...
+	grid: {
+		divisions: 50
+	}
+};
+
+
 
 // 0.25 is a good active time for the simulation.
 // The velocity field doesn't blow up too quickly at this timestep.
 // also with better boundary conditions this might not be an issue.
 // NOTE: Check GPU Gems.
 
-// a range from 4 - 0.01 creates an
-// interesting range of effects here.
-const DELTA_T = 0.25;
-
-const VELOCITY_DISSIPATION = 0.2;
 const VORTICITY = 1.0;
 const CURL = 30;
 
-const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
-const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
-const PRESSURE_JACOBI_ITERATIONS = 10;
-
-
-// Arrow data
-
-const GRID_DIVISIONS = 30;
 
 function create_arrow_geometry ()
 {
@@ -35,12 +93,12 @@ function create_arrow_geometry ()
 
 	let offsets = [[0, -0.005], [0.03, 0], [0, 0.005]]
 
-	let division = 1 / GRID_DIVISIONS;
-	for (var u = 0; u < GRID_DIVISIONS; u++)
+	let division = 1 / parameters.grid.divisions;
+	for (var u = 0; u < parameters.grid.divisions; u++)
 	{
-		for (var v = 0; v < GRID_DIVISIONS; v++)
+		for (var v = 0; v < parameters.grid.divisions; v++)
 		{
-			let i = (u * GRID_DIVISIONS + v) * 3;
+			let i = (u * parameters.grid.divisions + v) * 3;
 			let u_screen = 2.0 * division * u - 1.0 + division / 2.0;
 			let v_screen = 2.0 * division * v - 1.0 + division / 2.0;
 
@@ -117,39 +175,22 @@ class DoubleFramebuffer {
   }
 }
 
+// Application Memory
+
 let arrows = create_arrow_geometry();
 
 let color_buffer = new DoubleFramebuffer(COLOR_RESOLUTION);
 let velocity_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let pressure_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
-
 let divergence_buffer = create_buffer(SIM_RESOLUTION);
-let curl_0 = create_buffer(SIM_RESOLUTION);
 
+
+// OpenGL Shader Programs
 
 const create_color_buffer = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-		precision highp sampler2D;
-
-		varying vec2 vUv;
-		uniform float uAspectRatio;
-
-		#define SCALE 8.0
-
-		void main ()
-		{
-			vec2 uv = floor(vUv * SCALE * vec2(uAspectRatio, 1.0));
-			float v = mod(uv.x + uv.y, 2.0);
-
-			// scale color
-			// v = v * 0.1 + 0.8;
-
-			gl_FragColor = vec4(v, 0.0, v, 1.0);
-		}
-	`,
+	frag: require('./fluid-shaders/ink/half-tone.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -161,50 +202,11 @@ const create_color_buffer = regl({
 	count: 6
 });
 
+
 const draw_velocity_field = regl({
 	framebuffer: regl.prop('target'),
-	vert: `
-		precision highp float;
-
-		attribute vec2 aPosition;
-		attribute vec2 aUV;
-
-		uniform sampler2D uVelocity;
-
-		mat2 rot(float angle)
-		{
-			float c = cos(angle);
-			float s = sin(angle);
-
-			return mat2(
-				vec2(c, -s),
-				vec2(s,  c)
-			);
-		}
-
-		void main ()
-		{
-			vec2 sample = aUV * 0.5 + 0.5;
-			vec2 v = texture2D(uVelocity, sample).xy;
-			float angle = -atan(v.y, v.x);
-			mat2 rotation = rot(angle);
-			float scale = length(v);
-
-			vec2 component = aPosition - aUV;
-			component = scale * rotation * component;
-			component = component + aUV;
-
-			gl_Position = vec4(component, 0.0, 1.0);
-		}
-	`,
-	frag: `
-		precision highp float;
-
-		void main ()
-		{
-			gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
-		}
-	`,
+	vert: require('./fluid-shaders/arrows/arrows.vs'),
+	frag: require('./fluid-shaders/arrows/arrows.fs'),
 	attributes: {
 		aPosition: arrows.positions,
 		aUV: arrows.uvs
@@ -214,6 +216,7 @@ const draw_velocity_field = regl({
 	},
 	count: arrows.positions.length,
 });
+
 
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
@@ -228,21 +231,13 @@ const draw_pressure_field = regl({
 		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
 	},
 	count: 6
-})
+});
+
 
 const clear_buffer = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision mediump float;
-
-		uniform vec4 uClearColor;
-
-		void main ()
-		{
-			gl_FragColor = uClearColor;
-		}
-	`,
+	frag: require('./fluid-shaders/clear.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -252,40 +247,13 @@ const clear_buffer = regl({
 		uClearColor: regl.prop('clearcolor')
 	},
 	count: 6
-})
+});
+
 
 const create_velocity_buffer = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-
-		varying vec2 vUv;
-
-		#define PI 3.1415
-
-		void main ()
-		{
-			float u = vUv.x * 2.0 - 1.0;
-			float v = vUv.y * 2.0 - 1.0;
-			float alpha = 4.0;
-
-			float x = sin(2.0 * PI * v);
-
-			// float x = u * u;
-			float y = sin(2.0 * PI * u);
-
-			// this one is cool (v)
-			// float y = exp(alpha * v);
-
-			gl_FragColor = vec4(
-				x,
-				y,
-				0.0,
-				1.0
-			);
-		}
-	`,
+	frag: require('./fluid-shaders/velocity/2d-field.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -297,29 +265,28 @@ const create_velocity_buffer = regl({
 	count: 6
 });
 
+const add_color = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: require('./fluid-shaders/add-color.fs'),
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uSource: regl.prop('source'),
+		uTexelSize: regl.prop('sourceTexSize'),
+		uOrigin: regl.prop('origin'),
+		uColor: regl.prop('color'),
+		uRadius: regl.prop('radius')
+	},
+	count: 6
+})
+
 const add_directed_force = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-		precision highp sampler2D;
-
-		varying vec2 vUv;
-
-		uniform sampler2D uSource;
-		uniform vec2 uTexelSize;
-		uniform vec2 uOrigin;
-		uniform vec2 uDirection;
-		uniform float uRadius;
-
-		void main ()
-		{
-			vec2 p = vUv - uOrigin;
-			vec2 dir = exp(-dot(p, p) / uRadius) * uDirection;
-			vec2 base = texture2D(uSource, vUv).xy;
-			gl_FragColor = vec4(base + dir, 0.0, 1.0);
-		}
-	`,
+	frag: require('./fluid-shaders/add-force.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -337,39 +304,7 @@ const add_directed_force = regl({
 const advect_buffer = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-		precision highp	sampler2D;
-
-		varying vec2 vUv;
-
-		uniform sampler2D uVelocity;
-		uniform sampler2D uSource;
-		uniform vec2 uVelocityTexelSize;
-		uniform vec2 uTexelSize;
-		uniform float dt;
-		uniform float dissipation;
-
-		vec4 bilerp (sampler2D sam, vec2 uv, vec2 tsize) {
-        vec2 st = uv / tsize - 0.5;
-        vec2 iuv = floor(st);
-        vec2 fuv = fract(st);
-        vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * tsize);
-        vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * tsize);
-        vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * tsize);
-        vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * tsize);
-        return mix(mix(a, b, fuv.x), mix(c, d, fuv.x), fuv.y);
-    }
-
-		void main()
-		{
-			vec2 coord = vUv - dt * texture2D(uVelocity, vUv).xy * uVelocityTexelSize;
-			vec4 result = texture2D(uSource, coord);
-			float decay = 1.0 + dissipation * dt;
-
-			gl_FragColor = result;
-		}
-	`,
+	frag: require('./fluid-shaders/advect.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -379,147 +314,61 @@ const advect_buffer = regl({
 		uSource: regl.prop('source'),
 		uVelocityTexelSize: regl.prop('velocityTexSize'),
 		uTexelSize: regl.prop('sourceTexSize'),
-		dt: DELTA_T,
-		dissipation: VELOCITY_DISSIPATION
+		dt: regl.prop('dt'),
+		dissipation: regl.prop('dissipation'),
+		uIsColor: regl.prop('iscolor')
 	},
 	count: 6
 });
 
+// Not currently used
 
-const calculate_curl = regl({
-	framebuffer: regl.prop('target'),
-	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision mediump float;
-		precision mediump sampler2D;
-
-		varying highp vec2 vUv;
-		varying highp vec2 vL;
-		varying highp vec2 vR;
-		varying highp vec2 vT;
-		varying highp vec2 vB;
-
-		uniform sampler2D uVelocity;
-
-		void main ()
-		{
-			float L = texture2D(uVelocity, vL).y;
-			float R = texture2D(uVelocity, vR).y;
-			float T = texture2D(uVelocity, vT).x;
-			float B = texture2D(uVelocity, vB).x;
-			float vorticity = R - L - T + B;
-			gl_FragColor = vec4(0.5 * vorticity, 0.0, 0.0, 1.0);
-		}
-	`,
-	attributes: {
-		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
-	},
-	elements: [0, 1, 2, 0, 2, 3],
-	uniforms: {
-		uVelocity: regl.prop('velocity'),
-		uTexelSize: regl.prop('curlTexSize'),
-	},
-	count: 6
-});
-
-const calculate_vorticity = regl({
-	framebuffer: regl.prop('target'),
-	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-		precision highp sampler2D;
-
-		varying vec2 vUv;
-		varying vec2 vL;
-		varying vec2 vR;
-		varying vec2 vT;
-		varying vec2 vB;
-
-		uniform sampler2D uVelocity;
-		uniform sampler2D uCurl;
-		uniform float curl;
-		uniform float dt;
-
-		void main ()
-		{
-			float L = texture2D(uCurl, vL).y;
-			float R = texture2D(uCurl, vR).y;
-			float T = texture2D(uCurl, vT).x;
-			float B = texture2D(uCurl, vB).x;
-			float C = texture2D(uCurl, vUv).x;
-
-			vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
-			force /= length(force) + 0.0001;
-			force *= curl * C;
-			force.y *= -1.0;
-
-			vec2 velocity = texture2D(uVelocity, vUv).xy;
-			velocity += force * dt;
-			velocity = min(max(velocity, -1000.0), 1000.0);
-			gl_FragColor = vec4(velocity, 0.0, 1.0);
-		}
-	`,
-	attributes: {
-		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
-	},
-	elements: [0, 1, 2, 0, 2, 3],
-	uniforms: {
-		uVelocity: regl.prop('velocity'),
-		uCurl: regl.prop('curl'),
-		uTexelSize: regl.prop('velocityTexSize'),
-		vorticity: VORTICITY,
-		curl: CURL,
-		dt: DELTA_T,
-	},
-	count: 6
-})
+// const calculate_curl = regl({
+// 	framebuffer: regl.prop('target'),
+// 	vert: require('./fluid-shaders/simple.vs'),
+// 	frag: require('./fluid-shaders/curl.fs'),
+// 	attributes: {
+// 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+// 	},
+// 	elements: [0, 1, 2, 0, 2, 3],
+// 	uniforms: {
+// 		uVelocity: regl.prop('velocity'),
+// 		uTexelSize: regl.prop('curlTexSize'),
+// 	},
+// 	count: 6
+// });
+//
+// const calculate_vorticity = regl({
+// 	framebuffer: regl.prop('target'),
+// 	vert: require('./fluid-shaders/simple.vs'),
+// 	frag: require('./fluid-shaders/vorticity.fs'),
+// 	attributes: {
+// 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+// 	},
+// 	elements: [0, 1, 2, 0, 2, 3],
+// 	uniforms: {
+// 		uVelocity: regl.prop('velocity'),
+// 		uCurl: regl.prop('curl'),
+// 		uTexelSize: regl.prop('velocityTexSize'),
+// 		vorticity: regl.prop('vorticity'),
+// 		curl: regl.prop('curlrate'),
+// 		dt: parameters.dt,
+// 	},
+// 	count: 6
+// })
 
 
 const calculate_divergence = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision mediump float;
-		precision mediump sampler2D;
-
-		varying highp vec2 vUv;
-		varying highp vec2 vL;
-		varying highp vec2 vR;
-		varying highp vec2 vT;
-		varying highp vec2 vB;
-
-		uniform sampler2D uVelocity;
-		uniform highp vec2 uTexelSize;
-		uniform float rho;
-		uniform float dt_inv;
-
-		void main ()
-		{
-			float L = texture2D(uVelocity, vL).x;
-			float R = texture2D(uVelocity, vR).x;
-			float T = texture2D(uVelocity, vT).y;
-			float B = texture2D(uVelocity, vB).y;
-
-			vec2 C = texture2D(uVelocity, vUv).xy;
-
-			if (vL.x < 0.0) { L = -C.x; }
-			if (vR.x > 1.0) { L = -C.x; }
-			if (vT.y > 1.0) { L = -C.y; }
-			if (vB.y < 0.0) { L = -C.y; }
-
-			float div = 0.5 * (R - L + T - B);
-			gl_FragColor = vec4(div, 0.0, 0.0, 1.0);
-		}
-	`,
+	frag: require('./fluid-shaders/divergence.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
 		uVelocity: regl.prop('velocity'),
-		uTexelSize: regl.prop('velocityTexSize'),
-		rho: 0.001,
-		dt_inv: 1.0 / DELTA_T
+		uTexelSize: regl.prop('velocityTexSize')
 	},
 	count: 6
 });
@@ -527,32 +376,7 @@ const calculate_divergence = regl({
 const calculate_pressure = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision mediump float;
-		precision mediump sampler2D;
-
-		varying highp vec2 vUv;
-		varying highp vec2 vL;
-		varying highp vec2 vR;
-		varying highp vec2 vT;
-		varying highp vec2 vB;
-
-		uniform sampler2D uDivergence;
-		uniform sampler2D uPressure;
-
-		void main ()
-		{
-			float L = texture2D(uPressure, vL).x;
-			float R = texture2D(uPressure, vR).x;
-			float T = texture2D(uPressure, vT).x;
-			float B = texture2D(uPressure, vB).x;
-
-			float divergence = texture2D(uDivergence, vUv).x;
-			float pressure = (L + R + B + T - divergence) * 0.25;
-
-			gl_FragColor = vec4(pressure, 0.0, 0.0, 1.0);
-		}
-	`,
+	frag: require('./fluid-shaders/pressure-iteration.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -561,6 +385,8 @@ const calculate_pressure = regl({
 		uDivergence: regl.prop('divergence'),
 		uPressure: regl.prop('pressure'),
 		uTexelSize: regl.prop('pressureTexSize'),
+		dissipation: regl.prop('dissipation'),
+		dt: regl.prop('dt')
 	},
 	count: 6
 });
@@ -568,31 +394,7 @@ const calculate_pressure = regl({
 const calculate_velocity_gradient_for_pressure = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision mediump float;
-		precision mediump sampler2D;
-
-		varying highp vec2 vUv;
-		varying highp vec2 vL;
-		varying highp vec2 vR;
-		varying highp vec2 vT;
-		varying highp vec2 vB;
-
-		uniform sampler2D uVelocity;
-		uniform sampler2D uPressure;
-
-		void main ()
-		{
-			float L = texture2D(uPressure, vL).x;
-			float R = texture2D(uPressure, vR).x;
-			float T = texture2D(uPressure, vT).x;
-			float B = texture2D(uPressure, vB).x;
-
-			vec2 velocity = texture2D(uVelocity, vUv).xy;
-			velocity.xy -= vec2(R - L, T - B);
-			gl_FragColor = vec4(velocity, 0.0, 1.0);
-		}
-	`,
+	frag: require('./fluid-shaders/gradient.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -608,26 +410,7 @@ const calculate_velocity_gradient_for_pressure = regl({
 const draw_buffer = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: `
-		precision highp float;
-		precision highp	sampler2D;
-
-		varying vec2 vUv;
-
-		uniform sampler2D uSource;
-
-		void main()
-		{
-			vec4 uv = texture2D(uSource, vUv);
-
-			gl_FragColor = vec4(
-				clamp(uv.x, 0.0, 1.0),
-				clamp(uv.y, 0.0, 1.0),
-				clamp(uv.z, 0.0, 1.0),
-				1.0
-			);
-		}
-	`,
+	frag: require('./fluid-shaders/draw-buffer.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -640,49 +423,91 @@ const draw_buffer = regl({
 })
 
 
+let event_buffer = [];
 let keys = {};
-let forces = [{pos: [0.5, 0.5], dir: [0.01, 0.0], radius: 0.1}];
+let data = require('./forces.json');
 let state = {
-	simulating: true
+	simulating: true,
+	addforces : true,
+	render: "color"
 };
 
-
 create_color_buffer({target: color_buffer.front});
-create_velocity_buffer({target: velocity_buffer.front});
+// create_velocity_buffer({target: velocity_buffer.front});
+// clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
+clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
+
+
+// simulation
 
 regl.frame(() => {
 	// process input.
-	if ( keys['p'] ) {
-		state.simulating = !state.simulating;
-		keys['p'] = false;
-	}
-	// clear_buffer({target: tmp_color, clearcolor: [1.0, 1.0, 1.0, 1.0]})
+	event_buffer.forEach(event => {
+		if ( event.data == 'p' ) {
+			state.simulating = !state.simulating;
+		}
 
-	// if ( !keys['s'] ) draw_buffer({source: color_0, target: tmp_color});
-	//
-	// // Show the velocity field arrows for debugging.
-	draw_pressure_field({pressure: pressure_buffer.front, target: null});
-	// draw_buffer({source: color_buffer.front, target: null});
-	// if ( keys['a'] ) { draw_velocity_field({velocity: velocity_0, target: tmp_color}); }
+		if ( event.data == '1' )
+		{
+			state.render = RENDER_COLOR;
+		}
 
-	// draw_velocity_field({velocity: velocity_0, target: null});
-	// if ( keys['s'] ) { draw_pressure_field({pressure: pressure_0, target: tmp_color}); }
+		if ( event.data == '2')
+		{
+			state.render = RENDER_PRESSURE;
+		}
 
-	// draw_buffer({source: tmp_color, target: null});
+		if ( event.data == '3')
+		{
+			state.render = RENDER_VELOCITY;
+		}
+
+		if ( event.data == 'f')
+		{
+			state.addforces = !state.addforces;
+		}
+
+		if ( event.type == 'mouse')
+		{
+			add_color({
+				target: color_buffer.back,
+				source: color_buffer.front,
+				sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+				origin: [event.data.x, event.data.y],
+				color: [1.0, 1.0, 1.0, 1.0],
+				radius: parameters.radius.color
+			});
+
+			color_buffer.swap();
+		}
+	});
+
+	event_buffer = [];
+
+	if (state.render == RENDER_COLOR) draw_buffer({source: color_buffer.front, target: null});
+	if (state.render == RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
+	if (state.render == RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
 
 	// external forces
-	forces.forEach(force => {
-		add_directed_force({
-			target: velocity_buffer.back,
-			source: velocity_buffer.front,
-			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-			origin: force.pos,
-			direction: force.dir,
-			radius: force.radius
-		});
+	if (state.addforces && state.simulating)
+	{
+		data.forces.forEach(force => {
+			// directions are given in unit magnitude, which
+			// is way to big for clip space. Scale it down.
+			let dir = force.dir.map(x => x * 0.05);
 
-		velocity_buffer.swap();
-	})
+			add_directed_force({
+				target: velocity_buffer.back,
+				source: velocity_buffer.front,
+				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+				origin: force.pos,
+				direction: dir,
+				radius: parameters.radius.velocity
+			});
+
+			velocity_buffer.swap();
+		})
+	}
 
 
 	if (state.simulating)
@@ -692,10 +517,11 @@ regl.frame(() => {
 			source: velocity_buffer.front,
 			velocity: velocity_buffer.front,
 			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
+			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+			dissipation: parameters.dissipation.velocity,
+			dt: parameters.dt,
+			iscolor: false
 		});
-
-
 
 		calculate_divergence({
 			target: divergence_buffer,
@@ -703,35 +529,47 @@ regl.frame(() => {
 			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 		});
 
-		// clear_buffer({
-		// 	target: pressure_0,
-		// 	clearcolor: [0.0, 0.0, 0.0, 1.0]
-		// });
+		// create_arrow_geometry initializing pressure from scratch each cycle
+		// note: it doesn't really work that well, and costs more.
 
-		// for (var i = 0; i < PRESSURE_JACOBI_ITERATIONS; i += 1)
-		// {
-		// 	calculate_pressure({
-		// 		target: pressure_1,
-		// 		pressure: pressure_0,
-		// 		divergence: divergence_buffer,
-		// 		pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
-		// 	});
-		//
-		// 	tmp = pressure_0;
-		// 	pressure_0 = pressure_1;
-		// 	pressure_1 = pressure_0;
-		// }
+		if (parameters.iterations.pressure > 0)
+		{
+			clear_buffer({
+				target: pressure_buffer.front,
+				clearcolor: [0.0, 0.0, 0.0, 1.0]
+			});
 
-		calculate_pressure({
-			target: pressure_buffer.back,
-			pressure: pressure_buffer.front,
-			divergence: divergence_buffer,
-			pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
-		});
+			for (var i = 0; i < parameters.iterations.pressure; i += 1)
+			{
+				calculate_pressure({
+					target: pressure_buffer.back,
+					pressure: pressure_buffer.front,
+					divergence: divergence_buffer,
+					pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+					dissipation: parameters.dissipation.pressure,
+					dt: parameters.dt
+				});
+
+				pressure_buffer.swap();
+			}
+		}
+		else
+		{
+			calculate_pressure({
+				target: pressure_buffer.back,
+				pressure: pressure_buffer.front,
+				divergence: divergence_buffer,
+				pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+				dissipation: parameters.dissipation.pressure,
+				dt: parameters.dt
+			});
+
+			pressure_buffer.swap();
+		}
 
 		calculate_velocity_gradient_for_pressure({
 			target: velocity_buffer.front,
-			pressure: pressure_buffer.back,
+			pressure: pressure_buffer.front,
 			velocity: velocity_buffer.back,
 			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
 		});
@@ -741,11 +579,13 @@ regl.frame(() => {
 			source: color_buffer.front,
 			velocity: velocity_buffer.front,
 			sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
+			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+			dissipation: parameters.dissipation.velocity,
+			dt: parameters.dt,
+			iscolor: true
 		});
 
 		color_buffer.swap()
-		pressure_buffer.swap();
 	}
 });
 
@@ -753,8 +593,15 @@ regl.frame(() => {
 
 window.addEventListener('keydown', event => {
 	keys[event.key] = true;
+	event_buffer.push({type: 'key', data: event.key});
 });
 
-window.addEventListener('keyup', event => {
-	keys[event.key] = false;
+
+window.addEventListener('mousedown', event => {
+	let mouse = {
+		x: event.clientX / window.innerWidth,
+		y: 1.0 - (event.clientY / window.innerHeight)
+	}
+
+	event_buffer.push({type: 'mouse', data: mouse})
 });
