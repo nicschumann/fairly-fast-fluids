@@ -1,4 +1,5 @@
 const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_float_linear']});
+const request = require('browser-request');
 
 /**
  * Hello, and welcome to this simulator that draws Psychedelic Letters
@@ -19,7 +20,7 @@ const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_flo
  */
 // "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 1024;
+const COLOR_RESOLUTION = 512;
 const SIM_RESOLUTION = 128;
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
@@ -29,11 +30,13 @@ const RENDER_COLOR = 'color';
 const RENDER_PRESSURE = 'pressure';
 const RENDER_VELOCITY = 'velocity';
 
+// JSON Polling Interval (only relevant for development mode)
+const CONFIG_POLLING_INTERVAL = 1000;
 
 // Runtime parameters:
 // Tweaking these changes the behavior of the simulation over its lifespan.
 
-const parameters = {
+let parameters = {
 	// dt: this is the length of the timestep for the simulation.
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
@@ -74,6 +77,7 @@ const parameters = {
 	}
 };
 
+parameters = require('./data/08-pressure-parameters.json');
 
 
 // 0.25 is a good active time for the simulation.
@@ -221,7 +225,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/hsv-linear.fs'),
+	frag: require('./fluid-shaders/pressure/heatmap.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -424,8 +428,9 @@ const draw_buffer = regl({
 
 
 let event_buffer = [];
+let mouse_buffer = [];
 let keys = {};
-let data = require('./forces.json');
+let data = require('./data/forces.json');
 let state = {
 	simulating: true,
 	addforces : true,
@@ -467,18 +472,35 @@ regl.frame(() => {
 			state.addforces = !state.addforces;
 		}
 
-		if ( event.type == 'mouse')
+		if ( event.type == 'mouse' && !keys['Shift'])
 		{
 			add_color({
 				target: color_buffer.back,
 				source: color_buffer.front,
 				sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-				origin: [event.data.x, event.data.y],
+				origin: [event.data.pos.x, event.data.pos.y],
 				color: [1.0, 1.0, 1.0, 1.0],
 				radius: parameters.radius.color
 			});
 
 			color_buffer.swap();
+		}
+
+		if ( event.type == 'mouse' && keys['Shift'] && typeof event.data.dir !== 'undefined')
+		{
+			add_directed_force({
+				target: velocity_buffer.back,
+				source: velocity_buffer.front,
+				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+				origin: [event.data.pos.x, event.data.pos.y],
+				direction: [
+					event.data.dir.x * parameters.force.active,
+					event.data.dir.y * parameters.force.active
+				],
+				radius: parameters.radius.velocity
+			});
+
+			velocity_buffer.swap();
 		}
 	});
 
@@ -494,7 +516,7 @@ regl.frame(() => {
 		data.forces.forEach(force => {
 			// directions are given in unit magnitude, which
 			// is way to big for clip space. Scale it down.
-			let dir = force.dir.map(x => x * 0.05);
+			let dir = force.dir.map(x => x * parameters.force.ambient);
 
 			add_directed_force({
 				target: velocity_buffer.back,
@@ -590,18 +612,81 @@ regl.frame(() => {
 });
 
 
+// Interactivity Inputs
 
 window.addEventListener('keydown', event => {
 	keys[event.key] = true;
 	event_buffer.push({type: 'key', data: event.key});
 });
 
+window.addEventListener('keyup', event => {
+	keys[event.key] = false;
+});
+
 
 window.addEventListener('mousedown', event => {
+	keys["mouse"] = true;
+
 	let mouse = {
 		x: event.clientX / window.innerWidth,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	}
-
-	event_buffer.push({type: 'mouse', data: mouse})
+	if (keys['Shift']) { mouse_buffer.push(mouse); }
+	event_buffer.push({type: 'mouse', data: {pos: mouse}})
 });
+
+
+window.addEventListener('mousemove', event => {
+
+	let mouse = {
+		x: event.clientX / window.innerWidth,
+		y: 1.0 - (event.clientY / window.innerHeight)
+	};
+
+	if (keys['mouse'] && keys['Shift']) {
+
+		if (mouse_buffer.length > 0)
+		{
+			let prev_mouse = mouse_buffer[mouse_buffer.length - 1];
+
+			let dmouse = {
+				x: mouse.x - prev_mouse.x,
+				y: mouse.y - prev_mouse.y
+			};
+
+			let l = Math.sqrt(dmouse.x * dmouse.x + dmouse.y * dmouse.y);
+
+			dmouse.x /= l;
+			dmouse.y /= l;
+
+			mouse_buffer.push(mouse);
+			if (dmouse.x === dmouse.x && dmouse.y === dmouse.y){
+				event_buffer.push({type: 'mouse', data: {pos: mouse, dir: dmouse}})
+			}
+		}
+
+	} else if (keys['mouse']) {
+
+		event_buffer.push({type: 'mouse', data: {pos: mouse}})
+
+	}
+})
+
+
+window.addEventListener('mouseup', event => {
+	keys["mouse"] = false;
+	mouse_buffer = [];
+});
+
+//
+// window.setInterval(() => {
+// 	request('/src/data/parameters.json', (err, res) => {
+// 		try {
+// 			let data = JSON.parse(res.body);
+// 			parameters = data;
+// 			console.log(parameters)
+// 		} catch (err) {
+// 			console.error(err);
+// 		}
+// 	});
+// }, CONFIG_POLLING_INTERVAL);
