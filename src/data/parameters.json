@@ -1,0 +1,28 @@
+{
+	"name": "Unstable Pressure Iteration",
+
+	"dt": 0.25,
+
+	"dissipation": {
+		"velocity": 0.5,
+		"pressure": 0.5
+	},
+
+	"radius": {
+		"velocity": 0.0005,
+		"color": 0.001
+	},
+
+	"force": {
+		"ambient": 0.1,
+		"active": 1.0
+	},
+
+	"iterations": {
+		"pressure": 20
+	},
+
+	"grid": {
+		"divisions": 50
+	}
+}

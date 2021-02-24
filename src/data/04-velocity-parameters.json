@@ -1,0 +1,28 @@
+{
+	"name": "Chaotic Velocity Iteration",
+
+	"dt": 0.4,
+
+	"dissipation": {
+		"velocity": 0.01,
+		"pressure": 0.01
+	},
+
+	"radius": {
+		"velocity": 0.001,
+		"color":0.001
+	},
+
+	"force": {
+		"ambient": 0.05,
+		"active": 1.0
+	},
+
+	"iterations": {
+		"pressure": 0
+	},
+
+	"grid": {
+		"divisions": 50
+	}
+}

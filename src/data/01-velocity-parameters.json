@@ -1,0 +1,28 @@
+{
+	"name": "Stable Velocity Iteration",
+
+	"dt": 0.2,
+
+	"dissipation": {
+		"velocity": 0.5,
+		"pressure": 0.5
+	},
+
+	"radius": {
+		"velocity": 0.001,
+		"color":0.01
+	},
+
+	"force": {
+		"ambient": 0.05,
+		"active": 1.0
+	},
+
+	"iterations": {
+		"pressure": 20
+	},
+
+	"grid": {
+		"divisions": 50
+	}
+}
