@@ -8,10 +8,10 @@ void main ()
 {
   if (vUv.y > 0.8 || vUv.y < 0.2)
   {
-    gl_FragColor = vec4(vec3(0.0), 1.0);
+    gl_FragColor = vec4(vec3(1.0), 1.0);
   }
   else
   {
-    gl_FragColor = vec4(1.0);
+    gl_FragColor = vec4(vec3(0.0), 1.0);
   }
 }
