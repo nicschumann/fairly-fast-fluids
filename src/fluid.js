@@ -20,7 +20,7 @@ const request = require('browser-request');
  */
 // "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 512;
+const COLOR_RESOLUTION = 1024;
 const SIM_RESOLUTION = 128;
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
@@ -32,6 +32,8 @@ const RENDER_VELOCITY = 'velocity';
 
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
+const PRESSURE_JACOBI_ITERATIONS = 20;
+const VELOCITY_GRID_DIVISIONS = 50;
 
 // Runtime parameters:
 // Tweaking these changes the behavior of the simulation over its lifespan.
@@ -43,41 +45,32 @@ let parameters = {
 	// interesting range of effects here.
 	dt: 0.25,
 
-	// dissipation: this controls the built in decay of the velocity
-	// and pressure fields at each timestep. Setting these to 0 effectively
-	// prevents the velocities and pressures from decreasing over time, which
-	// can lead to some interesting behavior.
-	dissipation: {
-		// set these to below 0.1 to enable total freakout mode.
-		velocity: 0.25,
-		// set these to below 0.1 to enable total freakout mode.
-		pressure: 0.25
-
+	velocity: {
+		dissipation: 0.25,
+		radius: 0.001,
+		magnitude: 0.06
 	},
 
-	// This controls the radius of the "paintbrushes" used to
-	// place adjustments to the velocity and color fields in the
-	//
-	radius: {
-		// radius of impact for the initial velocity field.
-		velocity: 0.001,
-		// radius of impact for the initial color field, and for real time color shaping.
-		color: 0.001
+	pressure: {
+		dissipation: 0.25,
+		// --- v these might not be used v ---
+		radius: 0.001,
+		magnitude: 0.06
+		// --- ^ these might not be used ^  ---
 	},
 
-	iterations: {
-		// set this to 0 for freakout mode!
-		pressure: 20
+	force: {
+		radius: 0.001,
+		magnitude: 10.0
 	},
 
-	// not sure that this should be a runtime parameter, since it requires changeing the
-	// UV data of the velocity vertex shader...
-	grid: {
-		divisions: 50
+	ink: {
+		radius: 0.001,
+		color: [1.0, 1.0, 1.0, 1.0]
 	}
 };
 
-parameters = require('./data/08-pressure-parameters.json');
+// parameters = require('./data/01-velocity-parameters.json');
 
 
 // 0.25 is a good active time for the simulation.
@@ -97,12 +90,12 @@ function create_arrow_geometry ()
 
 	let offsets = [[0, -0.005], [0.03, 0], [0, 0.005]]
 
-	let division = 1 / parameters.grid.divisions;
-	for (var u = 0; u < parameters.grid.divisions; u++)
+	let division = 1 / VELOCITY_GRID_DIVISIONS;
+	for (var u = 0; u < VELOCITY_GRID_DIVISIONS; u++)
 	{
-		for (var v = 0; v < parameters.grid.divisions; v++)
+		for (var v = 0; v < VELOCITY_GRID_DIVISIONS; v++)
 		{
-			let i = (u * parameters.grid.divisions + v) * 3;
+			let i = (u * VELOCITY_GRID_DIVISIONS + v) * 3;
 			let u_screen = 2.0 * division * u - 1.0 + division / 2.0;
 			let v_screen = 2.0 * division * v - 1.0 + division / 2.0;
 
@@ -225,7 +218,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/heatmap.fs'),
+	frag: require('./fluid-shaders/pressure/rgb-exponential.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -437,9 +430,9 @@ let state = {
 	render: "color"
 };
 
-create_color_buffer({target: color_buffer.front});
+// create_color_buffer({target: color_buffer.front});
 // create_velocity_buffer({target: velocity_buffer.front});
-// clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
+clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
 clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
 
 
@@ -479,8 +472,8 @@ regl.frame(() => {
 				source: color_buffer.front,
 				sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
 				origin: [event.data.pos.x, event.data.pos.y],
-				color: [1.0, 1.0, 1.0, 1.0],
-				radius: parameters.radius.color
+				color: parameters.ink.color,
+				radius: parameters.ink.radius
 			});
 
 			color_buffer.swap();
@@ -494,10 +487,10 @@ regl.frame(() => {
 				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 				origin: [event.data.pos.x, event.data.pos.y],
 				direction: [
-					event.data.dir.x * parameters.force.active,
-					event.data.dir.y * parameters.force.active
+					event.data.dir.x * parameters.force.magnitude,
+					event.data.dir.y * parameters.force.magnitude
 				],
-				radius: parameters.radius.velocity
+				radius: parameters.force.radius
 			});
 
 			velocity_buffer.swap();
@@ -516,7 +509,7 @@ regl.frame(() => {
 		data.forces.forEach(force => {
 			// directions are given in unit magnitude, which
 			// is way to big for clip space. Scale it down.
-			let dir = force.dir.map(x => x * parameters.force.ambient);
+			let dir = force.dir.map(x => x * parameters.velocity.magnitude);
 
 			add_directed_force({
 				target: velocity_buffer.back,
@@ -524,7 +517,7 @@ regl.frame(() => {
 				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 				origin: force.pos,
 				direction: dir,
-				radius: parameters.radius.velocity
+				radius: parameters.velocity.radius
 			});
 
 			velocity_buffer.swap();
@@ -540,7 +533,7 @@ regl.frame(() => {
 			velocity: velocity_buffer.front,
 			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-			dissipation: parameters.dissipation.velocity,
+			dissipation: parameters.velocity.dissipation,
 			dt: parameters.dt,
 			iscolor: false
 		});
@@ -554,21 +547,21 @@ regl.frame(() => {
 		// create_arrow_geometry initializing pressure from scratch each cycle
 		// note: it doesn't really work that well, and costs more.
 
-		if (parameters.iterations.pressure > 0)
+		if (PRESSURE_JACOBI_ITERATIONS > 0)
 		{
 			clear_buffer({
 				target: pressure_buffer.front,
 				clearcolor: [0.0, 0.0, 0.0, 1.0]
 			});
 
-			for (var i = 0; i < parameters.iterations.pressure; i += 1)
+			for (var i = 0; i < PRESSURE_JACOBI_ITERATIONS; i += 1)
 			{
 				calculate_pressure({
 					target: pressure_buffer.back,
 					pressure: pressure_buffer.front,
 					divergence: divergence_buffer,
 					pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-					dissipation: parameters.dissipation.pressure,
+					dissipation: parameters.pressure.dissipation,
 					dt: parameters.dt
 				});
 
@@ -582,7 +575,7 @@ regl.frame(() => {
 				pressure: pressure_buffer.front,
 				divergence: divergence_buffer,
 				pressureTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-				dissipation: parameters.dissipation.pressure,
+				dissipation: parameters.pressure.dissipation,
 				dt: parameters.dt
 			});
 
@@ -602,7 +595,7 @@ regl.frame(() => {
 			velocity: velocity_buffer.front,
 			sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
 			velocityTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-			dissipation: parameters.dissipation.velocity,
+			dissipation: parameters.velocity.dissipation,
 			dt: parameters.dt,
 			iscolor: true
 		});
@@ -678,13 +671,28 @@ window.addEventListener('mouseup', event => {
 	mouse_buffer = [];
 });
 
+
+// These polling intervals refresh the set of forces
+// and the set of parameters control the sim, so that
+// they can be adjusted in real time.
+
 //
 // window.setInterval(() => {
 // 	request('/src/data/parameters.json', (err, res) => {
 // 		try {
-// 			let data = JSON.parse(res.body);
-// 			parameters = data;
-// 			console.log(parameters)
+// 			let new_parameters = JSON.parse(res.body);
+// 			parameters = new_parameters;
+// 		} catch (err) {
+// 			console.error(err);
+// 		}
+// 	});
+// }, CONFIG_POLLING_INTERVAL);
+//
+// window.setInterval(() => {
+// 	request('/src/data/forces.json', (err, res) => {
+// 		try {
+// 			let new_forces = JSON.parse(res.body);
+// 			data = new_forces;
 // 		} catch (err) {
 // 			console.error(err);
 // 		}

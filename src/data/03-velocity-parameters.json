@@ -1,28 +1,25 @@
 {
-	"name": "Unstable Velocity Iteration",
-
 	"dt": 0.4,
 
-	"dissipation": {
-		"velocity": 0.08,
-		"pressure": 0.08
+	"velocity": {
+		"dissipation": 0.08,
+		"radius": 0.001,
+		"magnitude": 0.05
 	},
 
-	"radius": {
-		"velocity": 0.001,
-		"color":0.001
+	"pressure": {
+		"dissipation": 0.08,
+		"radius": 0.001,
+		"magnitude": 0.06
 	},
 
 	"force": {
-		"ambient": 0.05,
-		"active": 1.0
+		"radius": 0.001,
+		"magnitude": 1.0
 	},
 
-	"iterations": {
-		"pressure": 20
-	},
-
-	"grid": {
-		"divisions": 50
+	"ink": {
+		"radius": 0.001,
+		"color": [1.0, 1.0, 1.0, 1.0]
 	}
 }

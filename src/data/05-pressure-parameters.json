@@ -1,28 +1,25 @@
 {
-	"name": "Stable Pressure Iteration",
-
 	"dt": 0.25,
 
-	"dissipation": {
-		"velocity": 1.0,
-		"pressure": 0.5
+	"velocity": {
+		"dissipation": 1.0,
+		"radius": 0.001,
+		"magnitude": 0.6
 	},
 
-	"radius": {
-		"velocity": 0.001,
-		"color": 0.001
+	"pressure": {
+		"dissipation": 0.5,
+		"radius": 0.001,
+		"magnitude": 0.06
 	},
 
 	"force": {
-		"ambient": 0.6,
-		"active": 1.0
+		"radius": 0.001,
+		"magnitude": 1.0
 	},
 
-	"iterations": {
-		"pressure": 20
-	},
-
-	"grid": {
-		"divisions": 50
+	"ink": {
+		"radius": 0.001,
+		"color": [1.0, 1.0, 1.0, 1.0]
 	}
 }

@@ -5,7 +5,7 @@ varying vec2 vUv;
 
 uniform sampler2D uPressure;
 
-#define RANGE 0.8
+#define RANGE 0.1
 
 float norm_range(float t, float a, float b)
 {

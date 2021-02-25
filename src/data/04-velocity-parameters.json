@@ -16,13 +16,5 @@
 	"force": {
 		"ambient": 0.05,
 		"active": 1.0
-	},
-
-	"iterations": {
-		"pressure": 0
-	},
-
-	"grid": {
-		"divisions": 50
 	}
 }
