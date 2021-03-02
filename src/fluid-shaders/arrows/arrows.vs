@@ -6,6 +6,7 @@ attribute vec2 aUV;
 varying float vMagnitude;
 
 uniform sampler2D uVelocity;
+uniform float uAspectRatio;
 
 mat2 rot(float angle)
 {
@@ -20,8 +21,10 @@ mat2 rot(float angle)
 
 void main ()
 {
-  vec2 sample = aUV * 0.5 + 0.5;
-  vec2 v = texture2D(uVelocity, sample).xy;
+  vec2 s = aUV * 0.5 + 0.5;
+  s.x *= uAspectRatio;
+
+  vec2 v = texture2D(uVelocity, s).xy;
   float angle = -atan(v.y, v.x);
   mat2 rotation = rot(angle);
   float scale = length(v);

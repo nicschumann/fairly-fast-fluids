@@ -212,7 +212,8 @@ const draw_velocity_field = regl({
 		aUV: arrows.uvs
 	},
 	uniforms: {
-		uVelocity: regl.prop('velocity')
+		uVelocity: regl.prop('velocity'),
+		uAspectRatio: () => window.innerWidth / window.innerHeight
 	},
 	count: arrows.positions.length,
 });
@@ -229,6 +230,7 @@ const draw_pressure_field = regl({
 	uniforms: {
 		uPressure: regl.prop('pressure'),
 		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		uAspectRatio: () => window.innerWidth / window.innerHeight
 	},
 	count: 6
 });
@@ -244,7 +246,8 @@ const clear_buffer = regl({
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
 		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-		uClearColor: regl.prop('clearcolor')
+		uClearColor: regl.prop('clearcolor'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -278,7 +281,8 @@ const add_color = regl({
 		uTexelSize: regl.prop('sourceTexSize'),
 		uOrigin: regl.prop('origin'),
 		uColor: regl.prop('color'),
-		uRadius: regl.prop('radius')
+		uRadius: regl.prop('radius'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 })
@@ -297,7 +301,8 @@ const add_directed_force = regl({
 		uOrigin: regl.prop('origin'),
 		uDirection: regl.prop('direction'),
 		uRadius: regl.prop('radius'),
-		uTheta: regl.prop('theta')
+		uTheta: regl.prop('theta'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -317,7 +322,8 @@ const advect_buffer = regl({
 		uTexelSize: regl.prop('sourceTexSize'),
 		dt: regl.prop('dt'),
 		dissipation: regl.prop('dissipation'),
-		uIsColor: regl.prop('iscolor')
+		uIsColor: regl.prop('iscolor'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -369,7 +375,8 @@ const calculate_divergence = regl({
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
 		uVelocity: regl.prop('velocity'),
-		uTexelSize: regl.prop('velocityTexSize')
+		uTexelSize: regl.prop('velocityTexSize'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -387,7 +394,8 @@ const calculate_pressure = regl({
 		uPressure: regl.prop('pressure'),
 		uTexelSize: regl.prop('pressureTexSize'),
 		dissipation: regl.prop('dissipation'),
-		dt: regl.prop('dt')
+		dt: regl.prop('dt'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -404,6 +412,7 @@ const calculate_velocity_gradient_for_pressure = regl({
 		uVelocity: regl.prop('velocity'),
 		uPressure: regl.prop('pressure'),
 		uTexelSize: regl.prop('velocityTexSize'),
+		uAspectRatio: 1.0
 	},
 	count: 6
 });
@@ -418,7 +427,9 @@ const draw_buffer = regl({
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
 		uSource: regl.prop('source'),
-		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE]
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		// ASPECT_RATIO
+		uAspectRatio: () => window.innerWidth / window.innerHeight
 	},
 	count: 6
 })
@@ -464,7 +475,8 @@ const draw_color_picker = regl({
 	},
 	elements: [0, 1, 2, 0, 2, 3],
 	uniforms: {
-		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE]
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		uAspectRatio: () => 1.0
 	},
 	count: 6
 })
@@ -698,8 +710,9 @@ window.addEventListener('keyup', event => {
 window.addEventListener('mousedown', event => {
 	keys["mouse"] = true;
 
+	// NOTE: ASPECT_RATIO
 	let mouse = {
-		x: event.clientX / window.innerWidth,
+		x: event.clientX / window.innerHeight,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	}
 
@@ -710,8 +723,9 @@ window.addEventListener('mousedown', event => {
 
 window.addEventListener('mousemove', event => {
 
+	// NOTE: ASPECT_RATIO
 	let mouse = {
-		x: event.clientX / window.innerWidth,
+		x: event.clientX / window.innerHeight ,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	};
 

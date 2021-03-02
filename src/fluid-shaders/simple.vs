@@ -9,10 +9,13 @@ varying vec2 vT;
 varying vec2 vB;
 
 uniform vec2 uTexelSize;
+uniform float uAspectRatio;
 
 void main ()
 {
   vUv = aPosition * 0.5 + 0.5;
+  vUv.x *= uAspectRatio;
+
   vL = vUv - vec2(uTexelSize.x, 0.0);
   vR = vUv + vec2(uTexelSize.x, 0.0);
   vT = vUv + vec2(0.0, uTexelSize.y);
