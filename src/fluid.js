@@ -724,8 +724,11 @@ window.addEventListener('mousedown', event => {
 window.addEventListener('mousemove', event => {
 
 	// NOTE: ASPECT_RATIO
+	// yes, dividing x by innerHeight is correct. This is an aspect ratio
+	// correction, an algebraic simplification from
+	// {x: (e.clientX / window.innerWidth) * (window.innerWidth / window.innerHeight), ...}
 	let mouse = {
-		x: event.clientX / window.innerHeight ,
+		x: event.clientX / window.innerHeight,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	};
 
