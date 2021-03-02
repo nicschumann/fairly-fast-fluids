@@ -29,6 +29,7 @@ const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
 const RENDER_COLOR = 'color';
 const RENDER_PRESSURE = 'pressure';
 const RENDER_VELOCITY = 'velocity';
+const RENDER_COLOR_PICKER = 'color_picker';
 
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
@@ -48,7 +49,8 @@ let parameters = {
 	velocity: {
 		dissipation: 0.25,
 		radius: 0.001,
-		magnitude: 0.06
+		magnitude: 0.06,
+		theta: Math.PI
 	},
 
 	pressure: {
@@ -180,6 +182,7 @@ let color_buffer = new DoubleFramebuffer(COLOR_RESOLUTION);
 let velocity_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let pressure_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let divergence_buffer = create_buffer(SIM_RESOLUTION);
+let color_picker_buffer = create_buffer(COLOR_RESOLUTION);
 
 
 // OpenGL Shader Programs
@@ -293,7 +296,8 @@ const add_directed_force = regl({
 		uTexelSize: regl.prop('sourceTexSize'),
 		uOrigin: regl.prop('origin'),
 		uDirection: regl.prop('direction'),
-		uRadius: regl.prop('radius')
+		uRadius: regl.prop('radius'),
+		uTheta: regl.prop('theta')
 	},
 	count: 6
 });
@@ -419,6 +423,52 @@ const draw_buffer = regl({
 	count: 6
 })
 
+const draw_color_picker = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: `
+		precision highp float;
+
+		varying vec2 vUv;
+		varying vec2 uTexelSize;
+
+		// this is due to http://lolengine.net/blog/2013/07/27/rgb-to-hsv-in-glsl
+		vec3 hsv2rgb(vec3 c)
+		{
+		    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+		    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+		    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+		}
+
+		#define SIZE .25
+		#define TWOPI 6.28318
+
+		void main ()
+		{
+			vec2 radius = vUv - vec2(0.5, 0.5);
+			float theta = atan(radius.y, radius.x);
+			float mag = length(radius);
+
+			if (mag <= SIZE)
+			{
+				gl_FragColor = vec4(hsv2rgb(vec3(theta / TWOPI, mag / .25, 1.0)), 1.0);
+			}
+			else
+			{
+				gl_FragColor = vec4(vec3(0.0), 1.0);
+			}
+		}
+	`,
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE]
+	},
+	count: 6
+})
+
 
 let event_buffer = [];
 let mouse_buffer = [];
@@ -432,6 +482,7 @@ let state = {
 
 // create_color_buffer({target: color_buffer.front});
 // create_velocity_buffer({target: velocity_buffer.front});
+draw_color_picker({target: color_picker_buffer});
 clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
 clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
 
@@ -444,6 +495,12 @@ regl.frame(() => {
 		if ( event.data == 'p' ) {
 			state.simulating = !state.simulating;
 		}
+
+		if ( event.data == 'f')
+		{
+			state.addforces = !state.addforces;
+		}
+
 
 		if ( event.data == '1' )
 		{
@@ -460,23 +517,41 @@ regl.frame(() => {
 			state.render = RENDER_VELOCITY;
 		}
 
-		if ( event.data == 'f')
+		if ( event.data == '4')
 		{
-			state.addforces = !state.addforces;
+			state.render = RENDER_COLOR_PICKER;
 		}
+
+
 
 		if ( event.type == 'mouse' && !keys['Shift'])
 		{
-			add_color({
-				target: color_buffer.back,
-				source: color_buffer.front,
-				sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-				origin: [event.data.pos.x, event.data.pos.y],
-				color: parameters.ink.color,
-				radius: parameters.ink.radius
-			});
+			if (state.render != RENDER_COLOR_PICKER)
+			{
+				add_color({
+					target: color_buffer.back,
+					source: color_buffer.front,
+					sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+					origin: [event.data.pos.x, event.data.pos.y],
+					color: parameters.ink.color,
+					radius: parameters.ink.radius
+				});
 
-			color_buffer.swap();
+				color_buffer.swap();
+			}
+			else
+			{
+				color_picker_buffer.use(() => {
+					parameters.ink.color = regl.read({
+						x: event.data.pos.x * COLOR_RESOLUTION,
+						y: event.data.pos.y * COLOR_RESOLUTION,
+						width: 1,
+						height: 1
+					});
+
+					console.log(parameters.ink);
+				});
+			}
 		}
 
 		if ( event.type == 'mouse' && keys['Shift'] && typeof event.data.dir !== 'undefined')
@@ -490,6 +565,7 @@ regl.frame(() => {
 					event.data.dir.x * parameters.force.magnitude,
 					event.data.dir.y * parameters.force.magnitude
 				],
+				theta: 0.0,
 				radius: parameters.force.radius
 			});
 
@@ -502,6 +578,7 @@ regl.frame(() => {
 	if (state.render == RENDER_COLOR) draw_buffer({source: color_buffer.front, target: null});
 	if (state.render == RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
 	if (state.render == RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
+	if (state.render == RENDER_COLOR_PICKER) draw_buffer({source: color_picker_buffer, target: null});
 
 	// external forces
 	if (state.addforces && state.simulating)
@@ -517,6 +594,7 @@ regl.frame(() => {
 				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 				origin: force.pos,
 				direction: dir,
+				theta: parameters.velocity.theta,
 				radius: parameters.velocity.radius
 			});
 
@@ -624,6 +702,7 @@ window.addEventListener('mousedown', event => {
 		x: event.clientX / window.innerWidth,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	}
+
 	if (keys['Shift']) { mouse_buffer.push(mouse); }
 	event_buffer.push({type: 'mouse', data: {pos: mouse}})
 });
@@ -637,7 +716,6 @@ window.addEventListener('mousemove', event => {
 	};
 
 	if (keys['mouse'] && keys['Shift']) {
-
 		if (mouse_buffer.length > 0)
 		{
 			let prev_mouse = mouse_buffer[mouse_buffer.length - 1];
@@ -657,11 +735,8 @@ window.addEventListener('mousemove', event => {
 				event_buffer.push({type: 'mouse', data: {pos: mouse, dir: dmouse}})
 			}
 		}
-
 	} else if (keys['mouse']) {
-
 		event_buffer.push({type: 'mouse', data: {pos: mouse}})
-
 	}
 })
 
