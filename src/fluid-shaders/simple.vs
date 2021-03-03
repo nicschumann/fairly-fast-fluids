@@ -15,6 +15,7 @@ void main ()
 {
   vUv = aPosition * 0.5 + 0.5;
   vUv.x *= uAspectRatio;
+  vUv.x -= uAspectRatio / 2.0 - 0.5;
 
   vL = vUv - vec2(uTexelSize.x, 0.0);
   vR = vUv + vec2(uTexelSize.x, 0.0);

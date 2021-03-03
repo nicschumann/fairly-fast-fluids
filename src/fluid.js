@@ -1,4 +1,5 @@
-const regl = require('regl')({extensions: ['OES_texture_float', 'OES_texture_float_linear']});
+const regl = require('regl')({
+	extensions: ['OES_texture_float', 'OES_texture_float_linear']});
 const request = require('browser-request');
 
 /**
@@ -553,6 +554,8 @@ regl.frame(() => {
 			}
 			else
 			{
+				console.log(event.data.pos);
+
 				color_picker_buffer.use(() => {
 					parameters.ink.color = regl.read({
 						x: event.data.pos.x * COLOR_RESOLUTION,
@@ -711,8 +714,11 @@ window.addEventListener('mousedown', event => {
 	keys["mouse"] = true;
 
 	// NOTE: ASPECT_RATIO
+	let uAspectOffset = (window.innerWidth / (2.0 * window.innerHeight)) - 0.5;
+	console.log(uAspectOffset);
 	let mouse = {
-		x: event.clientX / window.innerHeight,
+		x: event.clientX / window.innerHeight - uAspectOffset,
+		// x: event.clientX / window.innerWidth,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	}
 
@@ -727,8 +733,10 @@ window.addEventListener('mousemove', event => {
 	// yes, dividing x by innerHeight is correct. This is an aspect ratio
 	// correction, an algebraic simplification from
 	// {x: (e.clientX / window.innerWidth) * (window.innerWidth / window.innerHeight), ...}
+	let uAspectOffset = (window.innerWidth / (2.0 * window.innerHeight)) - 0.5
 	let mouse = {
-		x: event.clientX / window.innerHeight,
+		x: event.clientX / window.innerHeight - uAspectOffset,
+		// x: event.clientX / window.innerWidth,
 		y: 1.0 - (event.clientY / window.innerHeight)
 	};
 

@@ -23,6 +23,7 @@ void main ()
 {
   vec2 s = aUV * 0.5 + 0.5;
   s.x *= uAspectRatio;
+  s.x -= uAspectRatio / 2.0 - 0.5;
 
   vec2 v = texture2D(uVelocity, s).xy;
   float angle = -atan(v.y, v.x);
