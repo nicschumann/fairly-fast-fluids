@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "node watch.js",
-    "serve": "http-server . -p 8000 -c-1"
+    "watch": "node watch-chokidar.js",
+    "serve": "http-server . -p 8000 -c-1",
+    "watch-and-serve": "node watch-esbuild.js"
   },
   "author": "",
   "license": "ISC",
