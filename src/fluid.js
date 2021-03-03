@@ -123,6 +123,13 @@ function create_arrow_geometry ()
 	}
 }
 
+// function create_emitter_map(data, buffer)
+// {
+//
+//
+// 	return buffer;
+// }
+
 function create_buffer_from_image ()
 {
 	let im = document.getElementById('image');
@@ -182,6 +189,7 @@ let arrows = create_arrow_geometry();
 let color_buffer = new DoubleFramebuffer(COLOR_RESOLUTION);
 let velocity_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let pressure_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
+let emitter_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let divergence_buffer = create_buffer(SIM_RESOLUTION);
 let color_picker_buffer = create_buffer(COLOR_RESOLUTION);
 
@@ -307,6 +315,39 @@ const add_directed_force = regl({
 	},
 	count: 6
 });
+
+const add_emitter_field = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: `
+		precision mediump float;
+		precision mediump sampler2D;
+
+		varying vec2 vUv;
+
+		uniform sampler2D uEmitters;
+		uniform sampler2D uVelocity;
+
+		void main ()
+		{
+			vec4 vel = texture2D(uVelocity, vUv);
+			vec4 em = texture2D(uEmitters, vUv);
+
+			gl_FragColor = vel + em;
+		}
+	`,
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uEmitters: regl.prop('emitters'),
+		uVelocity: regl.prop('velocity'),
+		uTexelSize: regl.prop('sourceTexSize'),
+		uAspectRatio: 1.0
+	},
+	count: 6
+})
 
 const advect_buffer = regl({
 	framebuffer: regl.prop('target'),
@@ -499,6 +540,24 @@ draw_color_picker({target: color_picker_buffer});
 clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
 clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
 
+data.forces.forEach(force => {
+	// directions are given in unit magnitude, which
+	// is way to big for clip space. Scale it down.
+	let dir = force.dir.map(x => x * parameters.velocity.magnitude);
+
+	add_directed_force({
+		target: emitter_buffer.back,
+		source: emitter_buffer.front,
+		sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+		origin: force.pos,
+		direction: dir,
+		theta: parameters.velocity.theta,
+		radius: parameters.velocity.radius
+	});
+
+	emitter_buffer.swap();
+});
+
 
 // simulation
 
@@ -598,23 +657,13 @@ regl.frame(() => {
 	// external forces
 	if (state.addforces && state.simulating)
 	{
-		data.forces.forEach(force => {
-			// directions are given in unit magnitude, which
-			// is way to big for clip space. Scale it down.
-			let dir = force.dir.map(x => x * parameters.velocity.magnitude);
-
-			add_directed_force({
-				target: velocity_buffer.back,
-				source: velocity_buffer.front,
-				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-				origin: force.pos,
-				direction: dir,
-				theta: parameters.velocity.theta,
-				radius: parameters.velocity.radius
-			});
-
-			velocity_buffer.swap();
-		})
+		add_emitter_field({
+			target: velocity_buffer.back,
+			emitters: emitter_buffer.front,
+			velocity: velocity_buffer.front,
+			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
+		});
+		velocity_buffer.swap();
 	}
 
 
