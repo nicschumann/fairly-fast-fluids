@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "chokidar": "^3.5.1",
-    "esbuild": "^0.8.39",
+    "esbuild": "^0.8.54",
     "http-server": "^0.12.3"
   }
 }
