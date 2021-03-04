@@ -31,6 +31,7 @@ const RENDER_COLOR = 'color';
 const RENDER_PRESSURE = 'pressure';
 const RENDER_VELOCITY = 'velocity';
 const RENDER_COLOR_PICKER = 'color_picker';
+const RENDER_RADIUS_PICKER = 'radius_picker';
 
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
@@ -476,6 +477,46 @@ const draw_buffer = regl({
 	count: 6
 })
 
+const draw_radius_picker = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: `
+		precision highp float;
+
+		varying vec2 vUv;
+
+		uniform float uRadius;
+
+		#define EPSILON 0.001
+
+		void main ()
+		{
+			float r = length(vUv - vec2(0.5, 0.5));
+
+			if (abs(r - uRadius) < EPSILON)
+			{
+				gl_FragColor = vec4(1.0);
+			}
+			else
+			{
+				gl_FragColor = vec4(vec3(0.0), 1.0);
+			}
+		}
+	`,
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uRadius: regl.prop('radius'),
+		uMouseRadius: regl.prop('mouseradius'),
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		// ASPECT_RATIO
+		uAspectRatio: () => window.innerWidth / window.innerHeight
+	},
+	count: 6
+})
+
 const draw_color_picker = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
@@ -483,7 +524,6 @@ const draw_color_picker = regl({
 		precision highp float;
 
 		varying vec2 vUv;
-		varying vec2 uTexelSize;
 
 		// this is due to http://lolengine.net/blog/2013/07/27/rgb-to-hsv-in-glsl
 		vec3 hsv2rgb(vec3 c)
@@ -540,6 +580,12 @@ draw_color_picker({target: color_picker_buffer});
 clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
 clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
 
+
+// create the initial emitter map
+// this depicts persistant emitters that generate
+// velocity for all time. The initial emitters
+// are constructed from the tangent or normal fields
+// to a chosen glyph.
 data.forces.forEach(force => {
 	// directions are given in unit magnitude, which
 	// is way to big for clip space. Scale it down.
@@ -558,6 +604,7 @@ data.forces.forEach(force => {
 	emitter_buffer.swap();
 });
 
+console.log(parameters);
 
 // simulation
 
@@ -594,24 +641,15 @@ regl.frame(() => {
 			state.render = RENDER_COLOR_PICKER;
 		}
 
+		if ( event.data == '5' )
+		{
+			state.render = RENDER_RADIUS_PICKER;
+		}
 
 
 		if ( event.type == 'mouse' && !keys['Shift'])
 		{
-			if (state.render != RENDER_COLOR_PICKER)
-			{
-				add_color({
-					target: color_buffer.back,
-					source: color_buffer.front,
-					sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-					origin: [event.data.pos.x, event.data.pos.y],
-					color: parameters.ink.color,
-					radius: parameters.ink.radius
-				});
-
-				color_buffer.swap();
-			}
-			else
+			if (state.render == RENDER_COLOR_PICKER)
 			{
 				console.log(event.data.pos);
 
@@ -622,9 +660,31 @@ regl.frame(() => {
 						width: 1,
 						height: 1
 					});
-
-					console.log(parameters.ink);
 				});
+			}
+			else if (state.render == RENDER_RADIUS_PICKER)
+			{
+				let radius = Math.sqrt(
+					Math.pow(event.data.pos.x - 0.5, 2),
+					Math.pow(event.data.pos.y - 0.5, 2),
+				) / 100;
+
+				parameters.force.radius = radius;
+				parameters.ink.radius = radius;
+			}
+			else
+			{
+				console.log(keys);
+				add_color({
+					target: color_buffer.back,
+					source: color_buffer.front,
+					sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+					origin: [event.data.pos.x, event.data.pos.y],
+					color: parameters.ink.color.map(x => (keys['Meta'] ? -x : x)),
+					radius: parameters.ink.radius
+				});
+
+				color_buffer.swap();
 			}
 		}
 
@@ -653,6 +713,8 @@ regl.frame(() => {
 	if (state.render == RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
 	if (state.render == RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
 	if (state.render == RENDER_COLOR_PICKER) draw_buffer({source: color_picker_buffer, target: null});
+	if (state.render == RENDER_RADIUS_PICKER) draw_radius_picker({radius: parameters.force.radius * 100, target: null});
+
 
 	// external forces
 	if (state.addforces && state.simulating)
