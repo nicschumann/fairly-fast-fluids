@@ -1,3 +1,72 @@
-canvas#drawing-stage {
+@import './fonts.css';
 
+body {
+  background-color: black;
+}
+
+.overlay {
+  font-family: "Ray";
+  position: absolute;
+  z-index:100;
+
+  font-size: 2rem;
+  font-weight: 600;
+  color: white;
+}
+
+.overlay-top {
+  top:1rem;
+  left:1rem;
+}
+
+.overlay-bottom {
+  bottom:1rem;
+  right:1rem;
+  text-align: right;
+}
+
+
+
+.container {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.flex-container {
+  display:flex;
+  max-width: calc(100vw - 2rem);
+  flex-wrap:wrap;
+}
+
+.style {
+  color:white;
+  margin-right:1rem;
+  margin-bottom:1rem;
+  border:1px solid white;
+  border-radius:4px;
+  padding:0.5rem;
+}
+
+.key {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 0;
+  font-size: 1.75rem;
+
+  text-align: center;
+  width:3rem;
+  height:3rem;
+
+  margin-right:1rem;
+  margin-bottom:1rem;
+  border:1px solid white;
+  border-radius:4px;
+
+  cursor:pointer;
+}
+
+.active {
+  background-color:white;
+  color:black;
 }

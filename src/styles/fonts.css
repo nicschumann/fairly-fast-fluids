@@ -1,0 +1,79 @@
+@font-face {
+  font-family: "Ray";
+  src: url("./fonts/Ray-Ultra.woff") format('woff'),
+       url("./fonts/Ray-Ultra.eot") format('eot');
+
+  font-weight: 900;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: "Ray";
+  src: url("./fonts/Ray-Black.woff") format('woff'),
+       url("./fonts/Ray-Black.eot") format('eot');
+
+  font-weight: 800;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ray";
+  src: url("fonts/Ray-Bold.woff") format('woff'),
+       url("fonts/Ray-Bold.eot") format('eot');
+
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ray";
+  src: url("fonts/Ray-Regular.woff") format('woff'),
+       url("fonts/Ray-Regular.eot") format('eot');
+
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ray";
+  src: url("fonts/Ray-Light.woff") format('woff'),
+       url("fonts/Ray-Light.eot") format('eot');
+
+  font-weight: 300;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Ray";
+  src: url("fonts/Ray-ExtraLight.woff") format('woff'),
+       url("fonts/Ray-ExtraLight.eot") format('eot');
+
+  font-weight: 200;
+  font-style: normal;
+}
+
+
+.ray-extra-light {
+  font-weight: 200;
+}
+
+.ray-light {
+  font-weight: 300;
+}
+
+.ray-regular {
+  font-weight: 400;
+}
+
+.ray-bold {
+  font-weight: 600;
+}
+
+.ray-black {
+  font-weight: 800;
+}
+
+.ray-ultra {
+  font-weight: 900;
+}
