@@ -14,3 +14,8 @@ archive
 
 # Ignore generated forces from GlyphsApp for now
 forces.json
+
+# Ignore font files
+**/*.eot
+**/*.woff
+**/*.woff2
