@@ -1,6 +1,10 @@
 const regl = require('regl')({
-	extensions: ['OES_texture_float', 'OES_texture_float_linear']});
+	// attributes: {preserveDrawingBuffer: true},
+	extensions: ['OES_texture_float', 'OES_texture_float_linear', 'OES_standard_derivatives']});
 const request = require('browser-request');
+import {register_event_sources, handle_events, keystate} from './inputs.js';
+import * as R from './renderstates.js';
+
 
 /**
  * Hello, and welcome to this simulator that draws Psychedelic Letters
@@ -21,22 +25,15 @@ const request = require('browser-request');
  */
 // "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 1024;
+const COLOR_RESOLUTION = 2048;
 const SIM_RESOLUTION = 128;
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
 
-// Constants used to set the render state.
-const RENDER_COLOR = 'color';
-const RENDER_PRESSURE = 'pressure';
-const RENDER_VELOCITY = 'velocity';
-const RENDER_COLOR_PICKER = 'color_picker';
-const RENDER_RADIUS_PICKER = 'radius_picker';
-
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
 const PRESSURE_JACOBI_ITERATIONS = 20;
-const VELOCITY_GRID_DIVISIONS = 50;
+const VELOCITY_GRID_DIVISIONS = 65;
 
 // Runtime parameters:
 // Tweaking these changes the behavior of the simulation over its lifespan.
@@ -46,12 +43,13 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.25,
+	dt: 0.1,
 
 	velocity: {
+		// dissipation: 0.18,
 		dissipation: 0.25,
 		radius: 0.001,
-		magnitude: 0.06,
+		magnitude: 0.01,
 		theta: Math.PI
 	},
 
@@ -65,7 +63,7 @@ let parameters = {
 
 	force: {
 		radius: 0.001,
-		magnitude: 10.0
+		magnitude: 0.1
 	},
 
 	ink: {
@@ -75,16 +73,6 @@ let parameters = {
 };
 
 // parameters = require('./data/01-velocity-parameters.json');
-
-
-// 0.25 is a good active time for the simulation.
-// The velocity field doesn't blow up too quickly at this timestep.
-// also with better boundary conditions this might not be an issue.
-// NOTE: Check GPU Gems.
-
-const VORTICITY = 1.0;
-const CURL = 30;
-
 
 function create_arrow_geometry ()
 {
@@ -190,7 +178,7 @@ let arrows = create_arrow_geometry();
 let color_buffer = new DoubleFramebuffer(COLOR_RESOLUTION);
 let velocity_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let pressure_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
-let emitter_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
+let velocity_emitter_buffer = new DoubleFramebuffer(SIM_RESOLUTION);
 let divergence_buffer = create_buffer(SIM_RESOLUTION);
 let color_picker_buffer = create_buffer(COLOR_RESOLUTION);
 
@@ -232,7 +220,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/rgb-exponential.fs'),
+	frag: require('./fluid-shaders/pressure/grayscale-exponential.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -477,6 +465,23 @@ const draw_buffer = regl({
 	count: 6
 })
 
+const draw_edges = regl({
+	framebuffer: regl.prop('target'),
+	vert: require('./fluid-shaders/simple.vs'),
+	frag: require('./fluid-shaders/draw-regions.fs'),
+	attributes: {
+		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
+	},
+	elements: [0, 1, 2, 0, 2, 3],
+	uniforms: {
+		uSource: regl.prop('source'),
+		uTexelSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+		// ASPECT_RATIO
+		uAspectRatio: () => window.innerWidth / window.innerHeight
+	},
+	count: 6
+})
+
 const draw_radius_picker = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
@@ -563,15 +568,17 @@ const draw_color_picker = regl({
 	count: 6
 })
 
-
-let event_buffer = [];
-let mouse_buffer = [];
-let keys = {};
 let data = require('./data/forces.json');
+
 let state = {
 	simulating: true,
-	addforces : true,
-	render: "color"
+	render: R.RENDER_COLOR,
+	capture: false,
+
+	added_colors: [],
+	reset_colors: [],
+	added_forces: [],
+	reset_forces: [],
 };
 
 // create_color_buffer({target: color_buffer.front});
@@ -579,6 +586,8 @@ let state = {
 draw_color_picker({target: color_picker_buffer});
 clear_buffer({target: color_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]})
 clear_buffer({target: velocity_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
+
+register_event_sources();
 
 
 // create the initial emitter map
@@ -592,8 +601,8 @@ data.forces.forEach(force => {
 	let dir = force.dir.map(x => x * parameters.velocity.magnitude);
 
 	add_directed_force({
-		target: emitter_buffer.back,
-		source: emitter_buffer.front,
+		target: velocity_emitter_buffer.back,
+		source: velocity_emitter_buffer.front,
 		sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
 		origin: force.pos,
 		direction: dir,
@@ -601,7 +610,7 @@ data.forces.forEach(force => {
 		radius: parameters.velocity.radius
 	});
 
-	emitter_buffer.swap();
+	velocity_emitter_buffer.swap();
 });
 
 console.log(parameters);
@@ -609,119 +618,116 @@ console.log(parameters);
 // simulation
 
 regl.frame(() => {
-	// process input.
-	event_buffer.forEach(event => {
-		if ( event.data == 'p' ) {
-			state.simulating = !state.simulating;
-		}
 
-		if ( event.data == 'f')
-		{
-			state.addforces = !state.addforces;
-		}
+	handle_events(parameters, state);
 
+	if (state.render == R.RENDER_EDGES) draw_edges({source: color_buffer.front, target: null});
+	if (state.render == R.RENDER_COLOR &&  keystate(' ')) draw_edges({source: color_buffer.front, target: null});
+	if (state.render == R.RENDER_COLOR && !keystate(' ')) draw_buffer({source: color_buffer.front, target: null});
+	if (state.render == R.RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
+	if (state.render == R.RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
+	if (state.render == R.RENDER_COLOR_PICKER) draw_buffer({source: color_picker_buffer, target: null});
+	if (state.render == R.RENDER_RADIUS_PICKER) draw_radius_picker({radius: parameters.force.radius * 10, target: null});
 
-		if ( event.data == '1' )
-		{
-			state.render = RENDER_COLOR;
-		}
+	// save the canvas data if required
 
-		if ( event.data == '2')
-		{
-			state.render = RENDER_PRESSURE;
-		}
+	if (state.capture)
+	{
+		let a = document.createElement('a');
+		let canvas = document.getElementsByTagName('canvas')[0];
+		let data = canvas.toDataURL('image/png');
 
-		if ( event.data == '3')
-		{
-			state.render = RENDER_VELOCITY;
-		}
+		console.log('downloading image');
 
-		if ( event.data == '4')
-		{
-			state.render = RENDER_COLOR_PICKER;
-		}
+		a.setAttribute('download', 'canvas-image.png');
+		a.setAttribute('href', data);
+		a.click();
 
-		if ( event.data == '5' )
-		{
-			state.render = RENDER_RADIUS_PICKER;
-		}
+		state.capture = false;
+	}
 
 
-		if ( event.type == 'mouse' && !keys['Shift'])
-		{
-			if (state.render == RENDER_COLOR_PICKER)
-			{
-				console.log(event.data.pos);
+	// add_directed_force
+	state.added_forces.forEach(event => {
+		add_directed_force({
+			target: velocity_buffer.back,
+			source: velocity_buffer.front,
+			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+			origin: [event.data.pos.x, event.data.pos.y],
+			direction: [
+				event.data.dir.x * parameters.force.magnitude,
+				event.data.dir.y * parameters.force.magnitude
+			],
+			theta: 0.0,
+			radius: parameters.force.radius
+		});
 
-				color_picker_buffer.use(() => {
-					parameters.ink.color = regl.read({
-						x: event.data.pos.x * COLOR_RESOLUTION,
-						y: event.data.pos.y * COLOR_RESOLUTION,
-						width: 1,
-						height: 1
-					});
-				});
-			}
-			else if (state.render == RENDER_RADIUS_PICKER)
-			{
-				let radius = Math.sqrt(
-					Math.pow(event.data.pos.x - 0.5, 2),
-					Math.pow(event.data.pos.y - 0.5, 2),
-				) / 100;
-
-				parameters.force.radius = radius;
-				parameters.ink.radius = radius;
-			}
-			else
-			{
-				console.log(keys);
-				add_color({
-					target: color_buffer.back,
-					source: color_buffer.front,
-					sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
-					origin: [event.data.pos.x, event.data.pos.y],
-					color: parameters.ink.color.map(x => (keys['Meta'] ? -x : x)),
-					radius: parameters.ink.radius
-				});
-
-				color_buffer.swap();
-			}
-		}
-
-		if ( event.type == 'mouse' && keys['Shift'] && typeof event.data.dir !== 'undefined')
-		{
-			add_directed_force({
-				target: velocity_buffer.back,
-				source: velocity_buffer.front,
-				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-				origin: [event.data.pos.x, event.data.pos.y],
-				direction: [
-					event.data.dir.x * parameters.force.magnitude,
-					event.data.dir.y * parameters.force.magnitude
-				],
-				theta: 0.0,
-				radius: parameters.force.radius
-			});
-
-			velocity_buffer.swap();
-		}
+		velocity_buffer.swap();
 	});
 
-	event_buffer = [];
+	state.added_forces = [];
 
-	if (state.render == RENDER_COLOR) draw_buffer({source: color_buffer.front, target: null});
-	if (state.render == RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
-	if (state.render == RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
-	if (state.render == RENDER_COLOR_PICKER) draw_buffer({source: color_picker_buffer, target: null});
-	if (state.render == RENDER_RADIUS_PICKER) draw_radius_picker({radius: parameters.force.radius * 100, target: null});
+
+	// add_color
+	state.added_colors.forEach(event => {
+		add_color({
+			target: color_buffer.back,
+			source: color_buffer.front,
+			sourceTexSize: [COLOR_TEXEL_SIZE, COLOR_TEXEL_SIZE],
+			origin: [event.data.pos.x, event.data.pos.y],
+			color: parameters.ink.color.map(x => (keystate('Meta') ? -x : x)),
+			radius: parameters.ink.radius
+		});
+
+		color_buffer.swap();
+	});
+
+	state.added_colors = [];
+
+	// reset_forces
+	if (state.reset_forces.length > 0)
+	{
+		clear_buffer({target: velocity_emitter_buffer.front, clearcolor: [0.0, 0.0, 0.0, 1.0]});
+	}
+
+	state.reset_forces.forEach(force => {
+		let dir = force.dir.map(x => x * parameters.velocity.magnitude);
+
+		add_directed_force({
+			target: velocity_emitter_buffer.back,
+			source: velocity_emitter_buffer.front,
+			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+			origin: force.pos,
+			direction: dir,
+			theta: parameters.velocity.theta,
+			radius: parameters.velocity.radius
+		});
+
+		velocity_emitter_buffer.swap();
+	});
+
+	state.reset_forces = [];
+
+
+	// reset_colors
+	state.reset_colors.forEach(event => {
+		color_picker_buffer.use(() => {
+			parameters.ink.color = regl.read({
+				x: event.data.pos.x * COLOR_RESOLUTION,
+				y: event.data.pos.y * COLOR_RESOLUTION,
+				width: 1,
+				height: 1
+			});
+		});
+	});
 
 
 	// external forces
-	if (state.addforces && state.simulating)
+	if (state.simulating)
 	{
 		add_emitter_field({
 			target: velocity_buffer.back,
-			emitters: emitter_buffer.front,
+			emitters: velocity_emitter_buffer.front,
 			velocity: velocity_buffer.front,
 			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE]
 		});
@@ -807,105 +813,3 @@ regl.frame(() => {
 		color_buffer.swap()
 	}
 });
-
-
-// Interactivity Inputs
-
-window.addEventListener('keydown', event => {
-	keys[event.key] = true;
-	event_buffer.push({type: 'key', data: event.key});
-});
-
-window.addEventListener('keyup', event => {
-	keys[event.key] = false;
-});
-
-
-window.addEventListener('mousedown', event => {
-	keys["mouse"] = true;
-
-	// NOTE: ASPECT_RATIO
-	let uAspectOffset = (window.innerWidth / (2.0 * window.innerHeight)) - 0.5;
-	console.log(uAspectOffset);
-	let mouse = {
-		x: event.clientX / window.innerHeight - uAspectOffset,
-		// x: event.clientX / window.innerWidth,
-		y: 1.0 - (event.clientY / window.innerHeight)
-	}
-
-	if (keys['Shift']) { mouse_buffer.push(mouse); }
-	event_buffer.push({type: 'mouse', data: {pos: mouse}})
-});
-
-
-window.addEventListener('mousemove', event => {
-
-	// NOTE: ASPECT_RATIO
-	// yes, dividing x by innerHeight is correct. This is an aspect ratio
-	// correction, an algebraic simplification from
-	// {x: (e.clientX / window.innerWidth) * (window.innerWidth / window.innerHeight), ...}
-	let uAspectOffset = (window.innerWidth / (2.0 * window.innerHeight)) - 0.5
-	let mouse = {
-		x: event.clientX / window.innerHeight - uAspectOffset,
-		// x: event.clientX / window.innerWidth,
-		y: 1.0 - (event.clientY / window.innerHeight)
-	};
-
-	if (keys['mouse'] && keys['Shift']) {
-		if (mouse_buffer.length > 0)
-		{
-			let prev_mouse = mouse_buffer[mouse_buffer.length - 1];
-
-			let dmouse = {
-				x: mouse.x - prev_mouse.x,
-				y: mouse.y - prev_mouse.y
-			};
-
-			let l = Math.sqrt(dmouse.x * dmouse.x + dmouse.y * dmouse.y);
-
-			dmouse.x /= l;
-			dmouse.y /= l;
-
-			mouse_buffer.push(mouse);
-			if (dmouse.x === dmouse.x && dmouse.y === dmouse.y){
-				event_buffer.push({type: 'mouse', data: {pos: mouse, dir: dmouse}})
-			}
-		}
-	} else if (keys['mouse']) {
-		event_buffer.push({type: 'mouse', data: {pos: mouse}})
-	}
-})
-
-
-window.addEventListener('mouseup', event => {
-	keys["mouse"] = false;
-	mouse_buffer = [];
-});
-
-
-// These polling intervals refresh the set of forces
-// and the set of parameters control the sim, so that
-// they can be adjusted in real time.
-
-//
-// window.setInterval(() => {
-// 	request('/src/data/parameters.json', (err, res) => {
-// 		try {
-// 			let new_parameters = JSON.parse(res.body);
-// 			parameters = new_parameters;
-// 		} catch (err) {
-// 			console.error(err);
-// 		}
-// 	});
-// }, CONFIG_POLLING_INTERVAL);
-//
-// window.setInterval(() => {
-// 	request('/src/data/forces.json', (err, res) => {
-// 		try {
-// 			let new_forces = JSON.parse(res.body);
-// 			data = new_forces;
-// 		} catch (err) {
-// 			console.error(err);
-// 		}
-// 	});
-// }, CONFIG_POLLING_INTERVAL);
