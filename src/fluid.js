@@ -32,7 +32,7 @@ const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
 
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
-const PRESSURE_JACOBI_ITERATIONS = 20;
+const PRESSURE_JACOBI_ITERATIONS = 50;
 const VELOCITY_GRID_DIVISIONS = 65;
 
 // Runtime parameters:
@@ -43,14 +43,17 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.1,
+	dt: 0.025,
+
+	// dt: 0.01 - 0.025, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
+	// dt: 0.25, v.m: 0.001, v.theta: PI is a good combination for ink images
 
 	velocity: {
 		// dissipation: 0.18,
 		dissipation: 0.25,
-		radius: 0.001,
-		magnitude: 0.01,
-		theta: Math.PI
+		radius: 0.00025,
+		magnitude: 1,
+		theta: Math.PI / 2
 	},
 
 	pressure: {
@@ -220,7 +223,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/grayscale-exponential.fs'),
+	frag: require('./fluid-shaders/pressure/boundary.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
