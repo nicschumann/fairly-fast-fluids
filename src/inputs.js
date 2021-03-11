@@ -1,20 +1,69 @@
 var request = require('browser-request');
 import * as R from './renderstates.js';
+import {charset} from './charset.js';
+
 
 var event_buffer = [];
 var mouse_buffer = [];
 var keys = {};
 
-export function handle_events(parameters, state, callback) {
+
+function DOM_set_active_in_set(id, selector)
+{
+	let elements = document.querySelectorAll(`.${selector}.active`);
+	Array.from(elements).forEach(el => el.classList.remove('active'));
+	let target = document.getElementById(id);
+	if (target != null) {target.classList.add('active');}
+}
+
+
+var actions = {
+	'n': (parameters, state) => {
+		state.capture = true;
+	},
+
+	'1': (parameters, state) => {
+		state.render = R.RENDER_COLOR;
+		DOM_set_active_in_set('key-1', 'renderstate');
+	},
+
+	'2': (parameters, state) => {
+		state.render = R.RENDER_VELOCITY;
+		DOM_set_active_in_set('key-2', 'renderstate');
+	},
+
+	'3': (parameters, state) => {
+		state.render = R.RENDER_PRESSURE;
+		DOM_set_active_in_set('key-3', 'renderstate');
+	},
+
+	'4': (parameters, state) =>{
+		state.render = R.RENDER_COLOR_PICKER;
+		DOM_set_active_in_set('key-4', 'renderstate');
+	},
+
+	'5': (parameters, state) => {
+		state.render = R.RENDER_RADIUS_PICKER;
+		DOM_set_active_in_set('key-5', 'renderstate');
+	}
+};
+
+
+export function handle_events(parameters, state) {
 	event_buffer.forEach(event => {
-		if ( event.data == 'n' )
+		if (typeof actions[event.data] !== 'undefined')
 		{
-			state.capture = true;
+			actions[event.data](parameters, state);
 		}
 
-		if ( ["A", "B", "C", "D", "E", "F", "G"].indexOf(event.data) !== -1)
-		{
-			request(`/src/data/${event.data}-forces.json`, (err, res) => {
+		else if (
+			typeof charset[event.code] !== 'undefined' &&
+			// if you're holding down multiple keys (like shift for cap-A),
+			// we only want to process the cap-A event, not the shift event.
+			String.fromCharCode(event.code) == event.data
+		) {
+			let glyphname = charset[event.code]
+			request(`/src/data/glyphs/${glyphname}-forces.json`, (err, res) => {
 				if (err) { return; }
 
 				try {
@@ -24,39 +73,10 @@ export function handle_events(parameters, state, callback) {
 					console.error(err);
 				}
 			});
+
 		}
 
-		if ( event.data == '0' )
-		{
-			state.render = R.RENDER_EDGES;
-		}
-
-		if ( event.data == '1' )
-		{
-			state.render = R.RENDER_COLOR;
-		}
-
-		if ( event.data == '2')
-		{
-			state.render = R.RENDER_VELOCITY;
-		}
-
-		if ( event.data == '3')
-		{
-			state.render = R.RENDER_PRESSURE;
-		}
-
-		if ( event.data == '4')
-		{
-			state.render = R.RENDER_COLOR_PICKER;
-		}
-
-		if ( event.data == '5' )
-		{
-			state.render = R.RENDER_RADIUS_PICKER;
-		}
-
-		if ( event.type == 'mouse' && !keys['Shift'])
+		else if ( event.type == 'mouse' && !keys['Shift'])
 		{
 			if (state.render == R.RENDER_COLOR_PICKER)
 			{
@@ -78,7 +98,7 @@ export function handle_events(parameters, state, callback) {
 			}
 		}
 
-		if ( event.type == 'mouse' && keys['Shift'] && typeof event.data.dir !== 'undefined')
+		else if ( event.type == 'mouse' && keys['Shift'] && typeof event.data.dir !== 'undefined')
 		{
 			state.added_forces.push(event);
 		}
@@ -89,12 +109,10 @@ export function handle_events(parameters, state, callback) {
 
 
 export function register_event_sources() {
-
-
 	// Interactivity Inputs
 	window.addEventListener('keydown', event => {
 		keys[event.key] = true;
-		event_buffer.push({type: 'key', data: event.key});
+		event_buffer.push({type: 'key', code: `${event.key.charCodeAt(0)}`, data: event.key});
 	});
 
 	window.addEventListener('keyup', event => {
