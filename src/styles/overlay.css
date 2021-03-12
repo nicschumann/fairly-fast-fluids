@@ -1,0 +1,38 @@
+.overlay {
+  font-family: "Ray";
+  position: absolute;
+  z-index:100;
+
+  font-size: 2rem;
+  font-weight: 400;
+  color: white;
+
+  transition: all;
+  transition-duration: 0.2s;
+}
+
+.overlay-top {
+  top:1rem;
+  left:50%;
+  transform:translateX(-50%);
+  width:calc(90vw);
+  height:100vh;
+  overflow: scroll;
+}
+
+.overlay-center {
+  top:50%;
+  left:50%;
+  transform: translate(-50%, -50%);
+}
+
+.overlay-bottom {
+  bottom:1rem;
+  right:1rem;
+  text-align: right;
+}
+
+.overlay-hidden {
+  opacity: 0;
+  visibility: hidden;
+}

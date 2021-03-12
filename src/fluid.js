@@ -3,7 +3,10 @@ const regl = require('regl')({
 	extensions: ['OES_texture_float', 'OES_texture_float_linear', 'OES_standard_derivatives']});
 const request = require('browser-request');
 import {register_event_sources, handle_events, keystate} from './inputs.js';
+import { DOM_render_charset } from './inputs.js';
 import * as R from './renderstates.js';
+
+DOM_render_charset('letterforms-container');
 
 
 /**
@@ -43,17 +46,17 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.025,
+	dt: 0.25,
 
-	// dt: 0.01 - 0.025, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
-	// dt: 0.25, v.m: 0.001, v.theta: PI is a good combination for ink images
+	// dt: 0.01 - 0.025, v.r: 0.001, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
+	// dt: 0.25, v.r: 0.001, v.m: 0.001, v.theta: PI is a good combination for ink images
 
 	velocity: {
 		// dissipation: 0.18,
 		dissipation: 0.25,
-		radius: 0.00025,
-		magnitude: 1,
-		theta: Math.PI / 2
+		radius: 0.001,
+		magnitude: 0.01,
+		theta: Math.PI / 1
 	},
 
 	pressure: {
@@ -73,6 +76,19 @@ let parameters = {
 		radius: 0.001,
 		color: [1.0, 1.0, 1.0, 1.0]
 	}
+};
+
+
+let state = {
+	simulating: true,
+	interactable: false,
+	render: R.RENDER_COLOR,
+	capture: false,
+
+	added_colors: [],
+	reset_colors: [],
+	added_forces: [],
+	reset_forces: [],
 };
 
 // parameters = require('./data/01-velocity-parameters.json');
@@ -572,17 +588,6 @@ const draw_color_picker = regl({
 })
 
 let data = require('./data/forces.json');
-
-let state = {
-	simulating: true,
-	render: R.RENDER_COLOR,
-	capture: false,
-
-	added_colors: [],
-	reset_colors: [],
-	added_forces: [],
-	reset_forces: [],
-};
 
 // create_color_buffer({target: color_buffer.front});
 // create_velocity_buffer({target: velocity_buffer.front});

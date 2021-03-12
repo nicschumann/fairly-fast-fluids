@@ -6,15 +6,15 @@
     <link rel="stylesheet" href="bundle.css" />
   </head>
   <body>
-    <div id="overlay-top" class="overlay overlay-top visible">
+    <div id="overlay-top" class="overlay overlay-top overlay-hidden">
       <div class="keys container">
         <div class="flex-container">
-          <span id="key-1" data-key-trigger="1" class="renderstate key active">1</span>
-          <span id="key-2" data-key-trigger="2" class="renderstate key">2</span>
-          <span id="key-3" data-key-trigger="3" class="renderstate key">3</span>
-          <span id="key-4" data-key-trigger="4" class="renderstate key">4</span>
-          <span id="key-5" data-key-trigger="5" class="renderstate key">5</span>
-          <span id="key-?" data-key-trigger="?" class="renderstate key">?</span>
+          <span data-action="1" class="key-1 action-trigger renderstate key active">1</span>
+          <span data-action="2" class="key-2 action-trigger renderstate key untouched">2</span>
+          <span data-action="3" class="key-3 action-trigger renderstate key untouched">3</span>
+          <span data-action="4" class="key-4 action-trigger renderstate key untouched">4</span>
+          <span data-action="5" class="key-5 action-trigger renderstate key untouched">5</span>
+          <span data-action="?" class="key-? action-trigger renderstate key untouched">?</span>
         </div>
       </div>
 
@@ -22,7 +22,7 @@
         <div class="letterforms flex-container">
           <!-- <span class="style ray-extra-light">Extra Light</span> -->
           <!-- <span class="style ray-light">Light</span> -->
-          <span class="style ray-regular active">Regular</span>
+          <span data-action="regular" class="action-trigger style ray-regular active">Regular</span>
           <!-- <span class="style ray-bold">Bold</span> -->
           <!-- <span class="style ray-black">Black</span> -->
           <!-- <span class="style ray-ultra">Ultra</span> -->
@@ -30,14 +30,16 @@
       </div>
 
       <div class="letterforms container">
-        <div class="letterforms flex-container">
-          <span data-key-trigger="A" class="key active">A</span>
-          <span data-key-trigger="Á" class="key">Á</span>
+        <div id="letterforms-container" class="letterforms flex-container">
+          <!-- The characterset dom elements will be populated here. -->
         </div>
       </div>
     </div>
     <div id="overlay-center" class="overlay overlay-center">
-      <!-- Click anywhere to begin -->
+      <div class="prompts flex-container">
+        <span data-action="Escape" class="key-Escape action-trigger key flashing">Esc</span>
+        <span data-action="?" class="key-? action-trigger key">?</span>
+      </span>
     </div>
     <div id="overlay-bottom" class="overlay overlay-bottom">
       <!-- Love, Cem and Nic -->
