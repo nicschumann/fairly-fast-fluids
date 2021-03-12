@@ -76,9 +76,11 @@ function DOM_toggle_class_by_id(id, cls, state)
 
 var actions = {
 	'Escape': (parameters, state) => {
-		state.interacting = true;
+		// uncomment below if you want the Esc reminder to show up on the screen.
+		// if (state.interacting) { DOM_toggle_class_by_id('overlay-escape', 'overlay-hidden') }
 		DOM_toggle_class_by_id('overlay-top', 'overlay-hidden');
 		DOM_toggle_class_by_id('overlay-center', 'overlay-hidden', true);
+		state.interacting = true;
 	},
 
 	'n': (parameters, state) => {
@@ -104,8 +106,8 @@ var actions = {
 	'3': (parameters, state) => {
 		if (state.interacting)
 		{
-			state.render = R.RENDER_PRESSURE;
-			DOM_set_active_in_set('.key-3', 'renderstate');
+			state.render = R.RENDER_EMITTER_FIELD;
+			DOM_set_active_in_set('.key-6', 'renderstate');
 		}
 	},
 
@@ -123,7 +125,15 @@ var actions = {
 			state.render = R.RENDER_RADIUS_PICKER;
 			DOM_set_active_in_set('.key-5', 'renderstate');
 		}
-	}
+	},
+
+	'6': (parameters, state) => {
+		if (state.interacting)
+		{
+			state.render = R.RENDER_PRESSURE;
+			DOM_set_active_in_set('.key-3', 'renderstate');
+		}
+	},
 };
 
 

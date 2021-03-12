@@ -28,8 +28,8 @@ DOM_render_charset('letterforms-container');
  */
 // "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 2048;
-const SIM_RESOLUTION = 128;
+const COLOR_RESOLUTION = 1024;
+const SIM_RESOLUTION = 256;
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
 
@@ -46,16 +46,16 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.25,
+	dt: 0.15,
 
 	// dt: 0.01 - 0.025, v.r: 0.001, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
-	// dt: 0.25, v.r: 0.001, v.m: 0.001, v.theta: PI is a good combination for ink images
+	// dt: 0.25, v.r: 0.001, v.m: 0.075 - 0.001, v.theta: PI is a good combination for ink images
 
 	velocity: {
 		// dissipation: 0.18,
 		dissipation: 0.25,
 		radius: 0.001,
-		magnitude: 0.01,
+		magnitude: 0.025,
 		theta: Math.PI / 1
 	},
 
@@ -230,7 +230,9 @@ const draw_velocity_field = regl({
 	},
 	uniforms: {
 		uVelocity: regl.prop('velocity'),
-		uAspectRatio: () => window.innerWidth / window.innerHeight
+		uAspectRatio: () => window.innerWidth / window.innerHeight,
+		uColor: regl.prop('color'),
+		uScale: regl.prop('scale')
 	},
 	count: arrows.positions.length,
 });
@@ -632,7 +634,8 @@ regl.frame(() => {
 	if (state.render == R.RENDER_EDGES) draw_edges({source: color_buffer.front, target: null});
 	if (state.render == R.RENDER_COLOR &&  keystate(' ')) draw_edges({source: color_buffer.front, target: null});
 	if (state.render == R.RENDER_COLOR && !keystate(' ')) draw_buffer({source: color_buffer.front, target: null});
-	if (state.render == R.RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null});
+	if (state.render == R.RENDER_VELOCITY) draw_velocity_field({velocity: velocity_buffer.front, target: null, color: [1.0, 1.0, 1.0, 1.0], scale: 1.0});
+	if (state.render == R.RENDER_EMITTER_FIELD) draw_velocity_field({velocity: velocity_emitter_buffer.front, target: null, color: [1.0, 0.0, 0.1, 1.0], scale: 25.0});
 	if (state.render == R.RENDER_PRESSURE) draw_pressure_field({pressure: pressure_buffer.front, target: null});
 	if (state.render == R.RENDER_COLOR_PICKER) draw_buffer({source: color_picker_buffer, target: null});
 	if (state.render == R.RENDER_RADIUS_PICKER) draw_radius_picker({radius: parameters.force.radius * 10, target: null});
@@ -657,20 +660,40 @@ regl.frame(() => {
 
 	// add_directed_force
 	state.added_forces.forEach(event => {
-		add_directed_force({
-			target: velocity_buffer.back,
-			source: velocity_buffer.front,
-			sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
-			origin: [event.data.pos.x, event.data.pos.y],
-			direction: [
-				event.data.dir.x * parameters.force.magnitude,
-				event.data.dir.y * parameters.force.magnitude
-			],
-			theta: 0.0,
-			radius: parameters.force.radius
-		});
+		if (state.render == R.RENDER_EMITTER_FIELD)
+		{
+			add_directed_force({
+				target: velocity_emitter_buffer.back,
+				source: velocity_emitter_buffer.front,
+				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+				origin: [event.data.pos.x, event.data.pos.y],
+				direction: [
+					event.data.dir.x * parameters.force.magnitude * 0.1,
+					event.data.dir.y * parameters.force.magnitude * 0.1
+				],
+				theta: 0.0,
+				radius: parameters.force.radius
+			});
 
-		velocity_buffer.swap();
+			velocity_emitter_buffer.swap();
+		}
+		else
+		{
+			add_directed_force({
+				target: velocity_buffer.back,
+				source: velocity_buffer.front,
+				sourceTexSize: [SIM_TEXEL_SIZE, SIM_TEXEL_SIZE],
+				origin: [event.data.pos.x, event.data.pos.y],
+				direction: [
+					event.data.dir.x * parameters.force.magnitude,
+					event.data.dir.y * parameters.force.magnitude
+				],
+				theta: 0.0,
+				radius: parameters.force.radius
+			});
+
+			velocity_buffer.swap();
+		}
 	});
 
 	state.added_forces = [];
@@ -713,6 +736,7 @@ regl.frame(() => {
 
 		velocity_emitter_buffer.swap();
 	});
+
 
 	state.reset_forces = [];
 

@@ -36,3 +36,17 @@
   opacity: 0;
   visibility: hidden;
 }
+
+#overlay-escape {
+  max-height: 10vh;
+}
+
+#overlay-escape .key-Escape {
+  opacity:0;
+  visibility:hidden;
+}
+
+#overlay-escape:hover .key-Escape {
+  opacity:1;
+  visibility: visible;
+}

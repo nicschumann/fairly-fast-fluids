@@ -7,6 +7,7 @@ varying float vMagnitude;
 
 uniform sampler2D uVelocity;
 uniform float uAspectRatio;
+uniform float uScale;
 
 mat2 rot(float angle)
 {
@@ -28,7 +29,7 @@ void main ()
   vec2 v = texture2D(uVelocity, s).xy;
   float angle = -atan(v.y, v.x);
   mat2 rotation = rot(angle);
-  float scale = length(v);
+  float scale = length(v) * uScale;
 
   vec2 component = aPosition - aUV;
   component = min(scale, 2.0) * rotation * component;
