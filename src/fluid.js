@@ -46,7 +46,7 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.15,
+	dt: 0.1,
 
 	// dt: 0.01 - 0.025, v.r: 0.001, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
 	// dt: 0.25, v.r: 0.001, v.m: 0.075 - 0.001, v.theta: PI is a good combination for ink images
@@ -55,7 +55,7 @@ let parameters = {
 		// dissipation: 0.18,
 		dissipation: 0.25,
 		radius: 0.001,
-		magnitude: 0.025,
+		magnitude: 0.0125,
 		theta: Math.PI / 1
 	},
 
@@ -589,7 +589,7 @@ const draw_color_picker = regl({
 	count: 6
 })
 
-let data = require('./data/forces.json');
+let data = require('./data/glyphs/A_-forces.json');
 
 // create_color_buffer({target: color_buffer.front});
 // create_velocity_buffer({target: velocity_buffer.front});
