@@ -19,7 +19,3 @@ forces.json
 **/*.eot
 **/*.woff
 **/*.woff2
-!dst/bundle*
-!dst/*.woff
-!dst/*.eot
-!dst/*.ttf

@@ -25,4 +25,4 @@ git branch -D pre-gh-pages
 git branch -D gh-pages
 # git branch -D gh-pages
 
-rm dst/src
+rm -r dst/src
