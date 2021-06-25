@@ -6,7 +6,11 @@ import {register_event_sources, handle_events, keystate} from './inputs.js';
 import { DOM_render_charset } from './inputs.js';
 import * as R from './renderstates.js';
 
-DOM_render_charset('letterforms-container');
+
+// Set the canvas to the right aspect ratio
+// window.open("http://localhost:8000/dst", "Fast Fluid", "width=900, height=1600");
+
+// DOM_render_charset('letterforms-container');
 
 
 /**
@@ -28,10 +32,11 @@ DOM_render_charset('letterforms-container');
  */
 // "Compile Time" Constants
 // Texture Resolutions
-const COLOR_RESOLUTION = 1024;
-const SIM_RESOLUTION = 256;
+const COLOR_RESOLUTION = 2048;
+const SIM_RESOLUTION = 512;
 const COLOR_TEXEL_SIZE = 1.0 / COLOR_RESOLUTION;
 const SIM_TEXEL_SIZE = 1.0 / SIM_RESOLUTION;
+const CAPTURE_FPS = 30;
 
 // JSON Polling Interval (only relevant for development mode)
 const CONFIG_POLLING_INTERVAL = 1000;
@@ -46,16 +51,16 @@ let parameters = {
 	// This is NOT the framerate of the simulation (which tries to stick to 60)
 	// a range from 4 - 0.01 creates an
 	// interesting range of effects here.
-	dt: 0.1,
+	dt: 2,
 
 	// dt: 0.01 - 0.025, v.r: 0.001, v.m: 1, v.theta: PI / 2 is a good combination for pressure images
 	// dt: 0.25, v.r: 0.001, v.m: 0.075 - 0.001, v.theta: PI is a good combination for ink images
 
 	velocity: {
 		// dissipation: 0.18,
-		dissipation: 0.25,
-		radius: 0.001,
-		magnitude: 0.0125,
+		dissipation: 0.5,
+		radius: 0.00025,
+		magnitude: 0.5,
 		theta: Math.PI / 1
 	},
 
@@ -69,11 +74,11 @@ let parameters = {
 
 	force: {
 		radius: 0.001,
-		magnitude: 0.1
+		magnitude: 0.001
 	},
 
 	ink: {
-		radius: 0.001,
+		radius: 0.01,
 		color: [1.0, 1.0, 1.0, 1.0]
 	}
 };
@@ -84,6 +89,8 @@ let state = {
 	interactable: false,
 	render: R.RENDER_COLOR,
 	capture: false,
+	toggle_recording: false,
+	is_recording: false,
 
 	added_colors: [],
 	reset_colors: [],
@@ -241,7 +248,7 @@ const draw_velocity_field = regl({
 const draw_pressure_field = regl({
 	framebuffer: regl.prop('target'),
 	vert: require('./fluid-shaders/simple.vs'),
-	frag: require('./fluid-shaders/pressure/boundary.fs'),
+	frag: require('./fluid-shaders/pressure/rgb-exponential.fs'),
 	attributes: {
 		aPosition: [-1, -1, -1, 1, 1, 1, 1, -1]
 	},
@@ -591,6 +598,35 @@ const draw_color_picker = regl({
 
 let data = require('./data/glyphs/A_-forces.json');
 
+
+let canvas = document.getElementsByTagName('canvas')[0];
+let timer = null;
+let stream_chunks = [];
+let stream = canvas.captureStream(CAPTURE_FPS);
+let mediaRecorder = new MediaRecorder(stream);
+
+console.log("mp4", MediaRecorder.isTypeSupported("video/mp4"));
+console.log("webm/h264", MediaRecorder.isTypeSupported("video/webm;codec=h.264"));
+console.log("ogg", MediaRecorder.isTypeSupported("video/ogg"));
+console.log("x-matroska", MediaRecorder.isTypeSupported("video/x-matroska"));
+
+mediaRecorder.ondataavailable = e => {
+	stream_chunks.push(e.data);
+};
+
+mediaRecorder.onstop = e => {
+	let a = document.createElement('a');
+
+	let blob = new Blob(stream_chunks, {'type': 'video/webm;codec=h.264"'});
+	stream_chunks = [];
+	let videoURL = URL.createObjectURL(blob);
+
+	a.setAttribute('download', 'test.webm');
+	a.setAttribute('href', videoURL);
+	a.click();
+};
+
+
 // create_color_buffer({target: color_buffer.front});
 // create_velocity_buffer({target: velocity_buffer.front});
 draw_color_picker({target: color_picker_buffer});
@@ -655,6 +691,36 @@ regl.frame(() => {
 		a.click();
 
 		state.capture = false;
+	}
+
+	if (!state.is_recording && state.toggle_recording)
+	{
+		console.log('starting recording.');
+		let rec = document.getElementById('overlay-recording');
+		let elapsed_time = 1;
+		timer = setInterval(() => {
+			rec.innerText = elapsed_time;
+			elapsed_time += 1;
+		}, 1000);
+		rec.classList.remove('overlay-hidden');
+
+		mediaRecorder.start();
+		state.is_recording = true;
+		state.toggle_recording = false;
+	}
+
+	if (state.is_recording && state.toggle_recording)
+	{
+		console.log('stopping recording and downloading webm');
+		mediaRecorder.stop();
+
+		let rec = document.getElementById('overlay-recording');
+		clearInterval(timer);
+		rec.classList.add('overlay-hidden');
+		rec.innerText = '0';
+
+		state.is_recording = false;
+		state.toggle_recording = false;
 	}
 
 

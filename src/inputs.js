@@ -1,6 +1,6 @@
 var request = require('browser-request');
 import * as R from './renderstates.js';
-import {charset, ordered_charset} from './charset.js';
+import {charset, ordered_charset} from './ampersand-charset.js';
 
 
 var event_buffer = [];
@@ -87,6 +87,10 @@ var actions = {
 		state.capture = true;
 	},
 
+	'0': (parameters, state) => {
+		state.toggle_recording = true;
+	},
+
 	'1': (parameters, state) => {
 		if (state.interacting)
 		{
@@ -134,6 +138,12 @@ var actions = {
 			DOM_set_active_in_set('.key-3', 'renderstate');
 		}
 	},
+
+	'9': (parameters, state) => {
+		state.added_colors.push({
+			data: {pos: {x: 0.5, y: 0.5}}
+		});
+	}
 };
 
 
@@ -151,7 +161,7 @@ export function handle_events(parameters, state) {
 			String.fromCharCode(event.code) == event.data
 		) {
 			let glyphname = charset[event.code]
-			request(`/src/data/glyphs/${glyphname}-forces.json`, (err, res) => {
+			request(`/src/data/ampersands/${glyphname}-forces.json`, (err, res) => {
 				if (err) { return; }
 
 				try {
