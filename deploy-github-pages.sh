@@ -9,6 +9,7 @@ echo "!dst/bundle*" >> .gitignore
 echo "!dst/*.woff" >> .gitignore
 echo "!dst/*.eot" >> .gitignore
 echo "!dst/*.ttf" >> .gitignore
+echo "!dst/src" >> .gitignore
 
 mkdir -p dst/src
 cp src/data dst/src
