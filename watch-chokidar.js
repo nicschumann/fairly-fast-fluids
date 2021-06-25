@@ -18,6 +18,7 @@ const buildjs = async path => {
     // Load shaders as text for WebGL.
     loader: {'.vs': 'text', '.fs': 'text', '.eot': 'file', '.woff': 'file'},
 
+    define: { DEBUG: false },
     platform: 'node',
     target: ['node10.4'],
     outfile: 'dst/bundle.js'

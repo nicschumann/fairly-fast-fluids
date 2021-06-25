@@ -161,7 +161,10 @@ export function handle_events(parameters, state) {
 			String.fromCharCode(event.code) == event.data
 		) {
 			let glyphname = charset[event.code]
-			request(`/src/data/ampersands/${glyphname}-forces.json`, (err, res) => {
+
+			let target = (DEBUG ? '/' : '') + `src/data/ampersands/${glyphname}-forces.json`
+
+			request(target, (err, res) => {
 				if (err) { return; }
 
 				try {
