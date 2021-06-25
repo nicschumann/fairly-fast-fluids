@@ -1,0 +1,167 @@
+/* src/styles/fonts.css */
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-Ultra.QUEQW5F2.woff) format("woff"), url(./Ray-Ultra.BDJBCOXV.eot) format("eot");
+  font-weight: 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-Black.FUIWQ7QM.woff) format("woff"), url(./Ray-Black.A745C4VB.eot) format("eot");
+  font-weight: 800;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-Bold.36HK2B3M.woff) format("woff"), url(./Ray-Bold.IN372BY3.eot) format("eot");
+  font-weight: 600;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-Regular.J4KXBPJU.woff) format("woff"), url(./Ray-Regular.RHH3HZDM.eot) format("eot");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-Light.FNZXCJ45.woff) format("woff"), url(./Ray-Light.BB555PAS.eot) format("eot");
+  font-weight: 300;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Ray";
+  src: url(./Ray-ExtraLight.YNZJ7FFB.woff) format("woff"), url(./Ray-ExtraLight.ZU7VWVHP.eot) format("eot");
+  font-weight: 200;
+  font-style: normal;
+}
+.ray-extra-light {
+  font-weight: 200;
+}
+.ray-light {
+  font-weight: 300;
+}
+.ray-regular {
+  font-weight: 400;
+}
+.ray-bold {
+  font-weight: 600;
+}
+.ray-black {
+  font-weight: 800;
+}
+.ray-ultra {
+  font-weight: 900;
+}
+
+/* src/styles/overlay.css */
+.overlay {
+  font-family: "Ray";
+  position: absolute;
+  z-index: 100;
+  font-size: 2rem;
+  font-weight: 400;
+  color: white;
+  transition: all;
+  transition-duration: 0.2s;
+}
+.overlay-top {
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(90vw);
+  height: 100vh;
+  overflow: scroll;
+}
+.overlay-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.overlay-bottom {
+  bottom: 1rem;
+  right: 1rem;
+  text-align: right;
+}
+.overlay-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+#overlay-escape {
+  max-height: 10vh;
+}
+#overlay-escape .key-Escape {
+  opacity: 0;
+  visibility: hidden;
+}
+#overlay-escape:hover .key-Escape {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* src/styles/main.css */
+body {
+  background-color: black;
+  height: 100vh;
+  overflow-y: hidden;
+}
+.container {
+  display: block;
+  margin-bottom: 1rem;
+}
+.flex-container {
+  display: flex;
+  max-width: calc(100vw - 2rem);
+  flex-wrap: wrap;
+}
+.style {
+  color: white;
+  margin-right: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid white;
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+.key {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 0;
+  font-size: 1.75rem;
+  text-align: center;
+  width: 3rem;
+  height: 3rem;
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  margin-right: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid white;
+  border-radius: 4px;
+  background-color: black;
+  cursor: pointer;
+}
+.key:not(.inactive):hover,
+.active {
+  background-color: white;
+  color: black;
+}
+.key.untouched {
+  border-color: #353535;
+  color: #353535;
+  background-color: transparent;
+}
+.flashing {
+  animation-name: flashing;
+  animation-duration: 0.5s;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-timing-function: cubic-bezier(0.5, 1, 0.89, 1);
+}
+@keyframes flashing {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.05);
+  }
+}
